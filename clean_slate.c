@@ -246,11 +246,11 @@ int main(int argc, char **argv) {
     fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
 
     if (n_failed_fs != 0) {
-        fprintf(stdout, "%s: %d out of %d file%s couldn't be wiped!\nFailed file paths:\n", PROG_NAME, n_failed_fs, n_files, (n_files > 1)? "s":"");
+        fprintf(stdout, "%s: %d out of %d file%s couldn't be wiped!\nFailed files:\n", PROG_NAME, n_failed_fs, n_files, (n_files > 1)? "s":"");
         
         for(int i = 0; i < n_failed_fs; i++) {
-            fprintf(stdout, "'%s'", argv[i]); 
-            //display additional info
+            fprintf(stdout, "File: '%s'\n", argv[failed_fs[INDEX][i]]); 
+            fprintf(stdout, "Reason: %s\n", strerror(failed_fs[FAILURE_STATUS][i]));
         }
     }
 
