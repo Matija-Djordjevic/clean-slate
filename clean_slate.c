@@ -54,9 +54,13 @@
 #define ALGS_MASK (1111111111)
 //Flags end 
 
-
-#define INDEX           (0)
-#define FAILURE_STATUS  (1)
+typedef struct failure_info {
+    int index;
+    int error;
+    int wipe_prec;
+    time_t start_tm;
+    time_t termination_tm;
+} f_info;
 
 struct option const long_opts[] = {
     {"help"  , no_argument      , NULL, 'h'},
@@ -69,6 +73,7 @@ const char short_opts[] = "zoprcabdngheifs:t:";
 uint32_t flags = 0;
 int fd_src = -1;
 int first_last = -1;
+int wipe_prec;
 time_t prog_start_tm, wipe_start_tm, diff_tm;
 struct tm *lt;
 
@@ -113,6 +118,7 @@ Program will try to overwrite every file and wont stop if one file can't be over
 
 
 bool wipe_file(const char *file_path) {
+    wipe_prec = 0;
 
     //if file can't be opened and -f flag was set by user, try to change it's read and write permissions and open it again
     int fd;
@@ -223,9 +229,7 @@ int main(int argc, char **argv) {
     uint32_t n_files = argc - optind;
     FAIL_IF(n_files == 0, "Missing file opperand!");
 
-    int **failed_fs = malloc(2 * sizeof(int *));
-    int **failed_fs[INDEX] = malloc(n_files * sizeof(int));
-    int **failed_fs[FAILURE_STATUS] = malloc(n_files * sizeof(int));
+    f_info *failed_fs = malloc(n_files * sizeof(f_info));
     int n_failed_fs = 0;
 
     for (uint32_t i = optind; i < argc; i++) {
@@ -233,8 +237,7 @@ int main(int argc, char **argv) {
         time(&wipe_start_tm);
 
         if (!wipe_file(argv[i])) {
-            failed_fs[INDEX][n_failed_fs] = i;
-            failed_fs[FAILURE_STATUS][n_failed_fs++] = errno;
+            failed_fs[n_failed_fs++] = (f_info){i, errno, wipe_start_tm, time(NULL), wipe_prec};
         }
 
         diff_tm = time(NULL) - wipe_start_tm;
@@ -246,12 +249,20 @@ int main(int argc, char **argv) {
     fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
 
     if (n_failed_fs != 0) {
-        fprintf(stdout, "%s: %d out of %d file%s couldn't be wiped!\nFailed files:\n", PROG_NAME, n_failed_fs, n_files, (n_files > 1)? "s":"");
+        fprintf(stdout, "%s: %d out of %d file%s couldn't be wiped!\nFailed files:\n\n", PROG_NAME, n_failed_fs, n_files, (n_files > 1)? "s":"");
         
         for(int i = 0; i < n_failed_fs; i++) {
-            fprintf(stdout, "File: '%s'\n", argv[failed_fs[INDEX][i]]); 
-            fprintf(stdout, "Reason: %s\n", strerror(failed_fs[FAILURE_STATUS][i]));
+            fprintf(stdout, "File: '%s'\n", failed_fs[i].index); 
+            fprintf(stdout, "Reason: %s\n", strerror(failed_fs[i].error));
+            fprintf(stdout, "Started at: %d\n", failed_fs[i].start_tm);
+            fprintf(stdout, "Failed at: %d\n",  failed_fs[i].termination_tm);
+            fprintf(stdout, "\% completed: %d\%\n\n", failed_fs[i].wipe_prec);
         }
+
+        fprintf(stdout, "Run program again for failed files? [Y/N]");
+        // scan to se if yes was selected
+        // if it was close what needs to be closed 
+        // then call program again with failed files (execl)
     }
 
     FAIL_IF(fd_src != -1 && close(fd_src) == -1, "Can't close src file!");
