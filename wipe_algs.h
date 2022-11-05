@@ -25,6 +25,10 @@
 
 #define DISP_INFO       (1<<10)
 
+int first_last = -1;
+int fd_src = -1;
+int wipe_prec = 0;
+uint32_t flags;
 
 bool wipe_source    (const int fd);
 bool wipe_zeros     (const int fd);
@@ -40,12 +44,8 @@ bool wipe_gutmann   (const int fd);
 
 bool wipe_file(const int fd);
 
-int first_last = -1;
-int fd_src = -1;
-int wipe_prec = 0;
-uint32_t flags;
 
-bool wipe_file(const char fd) {
+bool wipe_file(const int fd) {
     wipe_prec = 0;
     srand(time(NULL));
 
@@ -59,17 +59,71 @@ bool wipe_file(const char fd) {
     if (S_ISSOCK(sb.st_mode) || S_ISFIFO(sb.st_mode)) 
         return false;
 
-    return    fd_src != -1         && !wipe_source(fd)
-           || flags & USE_ZEROS    && !wipe_zeros(fd)
-           || flags & USE_ONES     && !wipe_ones(fd)
-           || flags & USE_PSEUDO   && !wipe_pseudo(fd)
-           || flags & USE_GOST     && !wipe_gost(fd)
-           || flags & USE_AIRFORCE && !wipe_airforce(fd)
-           || flags & USE_ARMY     && !wipe_army(fd)
-           || flags & USE_HMG      && !wipe_hmg(fd)
-           || flags & USE_DOD      && !wipe_dod(fd)
-           || flags & USE_PFITZNER && !wipe_pfitzner(fd)
-           || flags & USE_GUTMANN  && !wipe_gutmann(fd);
+    return !(   fd_src != -1         && !wipe_source(fd)
+             || flags & USE_ZEROS    && !wipe_zeros(fd)
+             || flags & USE_ONES     && !wipe_ones(fd)
+             || flags & USE_PSEUDO   && !wipe_pseudo(fd)
+             || flags & USE_GOST     && !wipe_gost(fd)
+             || flags & USE_AIRFORCE && !wipe_airforce(fd)
+             || flags & USE_ARMY     && !wipe_army(fd)
+             || flags & USE_HMG      && !wipe_hmg(fd)
+             || flags & USE_DOD      && !wipe_dod(fd)
+             || flags & USE_PFITZNER && !wipe_pfitzner(fd)
+             || flags & USE_GUTMANN  && !wipe_gutmann(fd));
 }
 
-//random time seed
+bool wipe_source (const int fd) {
+
+    return true;
+}
+
+bool wipe_zeros (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_ones (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_pseudo (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_gost (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_airforce (const int fd) { 
+ 
+    return true;   
+}
+
+bool wipe_army (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_hmg (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_dod (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_pfitzner (const int fd) { 
+    
+    return true;
+}
+
+bool wipe_gutmann (const int fd) { 
+    
+    return true;
+}
+
