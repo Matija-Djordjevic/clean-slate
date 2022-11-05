@@ -10,10 +10,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#include <ctype.h>
+#include "wipe_algs.h"
 
 /*
  *Doc
  */
+
 #define PROG_NAME "Clean Slate"
 
 #ifndef DEBUG
@@ -35,25 +38,6 @@
     } while(0);
 
 
-//Flags
-#define USE_ZEROS       (1<<0)  //-z
-#define USE_ONES        (1<<1)  //-o
-#define USE_PSEUDO      (1<<2)  //-p
-#define USE_GOST        (1<<3)  //-r
-#define USE_AIRFORCE    (1<<4)  //-c
-#define USE_ARMY        (1<<5)  //-a
-#define USE_HMG         (1<<6)  //-b
-#define USE_DOD         (1<<7)  //-d
-#define USE_PFITZNER    (1<<8)  //-n
-#define USE_GUTMANN     (1<<9)  //-g
-
-#define DELETE_AFTER    (1<<10) //-e
-#define DISP_INFO       (1<<11) //-i
-#define FORCE_OPEN      (1<<12) //-f
-
-#define ALGS_MASK (1111111111)
-//Flags end 
-
 typedef struct failure_info {
     int index;
     int error;
@@ -71,10 +55,8 @@ const char short_opts[] = "zoprcabdngheifs:t:";
 
 
 uint32_t flags = 0;
-int fd_src = -1;
-int first_last = -1;
-int wipe_prec;
 time_t prog_start_tm, wipe_start_tm, diff_tm;
+bool force_open = false, delete_after = false;
 struct tm *lt;
 
 
@@ -116,49 +98,8 @@ Program will try to overwrite every file and wont stop if one file can't be over
     exit(EXIT_SUCCESS);
 }
 
-
-bool wipe_file(const char *file_path) {
-    wipe_prec = 0;
-
-    //if file can't be opened and -f flag was set by user, try to change it's read and write permissions and open it again
-    int fd;
-    if(    (fd = open(file_path, O_RDWR)) == -1
-        && errno == EACCES && flags & FORCE_OPEN
-        && (chmod(file_path, S_IRUSR | S_IWUSR) == -1 || (fd = open(file_path, O_RDWR)) == -1)
-        || fd == -1)
-        return false;
-
-
-    //get space allocated for faile in bytes
-    struct stat sb;
-    if (fstat(fd, &sb) == -1) { close(fd); return false; }
-    uint32_t fs_bytes = sb.st_blocks * 512;
-
-    //FIFO and socket files can't be wiped
-    if (S_ISSOCK(sb.st_mode) || S_ISFIFO(sb.st_mode)) { close(fd); return false; }
-
-    if (   fd_src != -1         && !wipe_source(fd)
-        || flags & USE_ZEROS    && !wipe_zeros(fd)
-        || flags & USE_ONES     && !wipe_ones(fd)
-        || flags & USE_PSEUDO   && !wipe_pseudo(fd)
-        || flags & USE_GOST     && !wipe_gost(fd)
-        || flags & USE_AIRFORCE && !wipe_airforce(fd)
-        || flags & USE_ARMY     && !wipe_army(fd)
-        || flags & USE_HMG      && !wipe_hmg(fd)
-        || flags & USE_DOD      && !wipe_dod(fd)
-        || flags & USE_PFITZNER && !wipe_pfitzner(fd)
-        || flags & USE_GUTMANN  && !wipe_gutmann(fd)) {
-        close(fd);
-        return false;
-    }
-
-    close(fd);
-    return true;
-}
-
 int main(int argc, char **argv) {
     prog_start_tm = time(NULL);
-    srand(prog_start_tm);
 
     int opt;
     while((opt = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
@@ -199,13 +140,13 @@ int main(int argc, char **argv) {
                 usage();
                 break;
             case 'e':
-                flags |= DELETE_AFTER;
+                delete_after = true;
                 break;
             case 'i':
                 flags |= DISP_INFO;
                 break;
             case 'f':
-                flags |= FORCE_OPEN;
+                force_open = true;
                 break;
             case 's':
                 FAIL_IF((fd_src = open(optarg + 1, O_RDONLY)) == -1, "Can't open source file!");
@@ -219,30 +160,38 @@ int main(int argc, char **argv) {
     }
 
     // if no wipe algorithm was selected, file(s) will be overwriten using zeros (USE_ZEROS)
-    if (!(flags & ALGS_MASK))
+    if (!(flags & ALGS_MASK) && fd_src != -1)
         flags |= USE_ZEROS;
-
-    // if we overwrite by using bytes from source file than no wipe alg will be used
-    if (fd_src != -1)
-        flags &= ~ALGS_MASK;
-
+        
     uint32_t n_files = argc - optind;
     FAIL_IF(n_files == 0, "Missing file opperand!");
 
     f_info *failed_fs = malloc(n_files * sizeof(f_info));
     int n_failed_fs = 0;
 
+    //main loop
     for (uint32_t i = optind; i < argc; i++) {
         fprintf("Wiping file: '%s'\n", argv[i]);
         time(&wipe_start_tm);
 
-        if (!wipe_file(argv[i])) {
+        //if file can't be opened and -f flag was set by user, try to change it's read and write permissions and open it again
+        int fd;
+        if(    (fd = open(argv[i], O_RDWR)) == -1
+            && errno == EACCES && force_open
+            && (chmod(argv[i], S_IRUSR | S_IWUSR) == -1 || (fd = open(argv[i], O_RDWR)) == -1)
+            || fd == -1)
+            return false;
+
+        if (!wipe_file(fd)) {
             failed_fs[n_failed_fs++] = (f_info){i, errno, wipe_start_tm, time(NULL), wipe_prec};
         }
-
+        close(fd);
+        
         diff_tm = time(NULL) - wipe_start_tm;
         fprintf(stdout, "Time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
     }
+    FAIL_IF(fd_src != -1 && close(fd_src) == -1, "Can't close src file!");
+    
     
     diff_tm = prog_start_tm - time(NULL);
     lt = localtime(&diff_tm);
@@ -258,13 +207,19 @@ int main(int argc, char **argv) {
             fprintf(stdout, "Failed at: %d\n",  failed_fs[i].termination_tm);
             fprintf(stdout, "\% completed: %d\%\n\n", failed_fs[i].wipe_prec);
         }
-
+        
+        char c;
         fprintf(stdout, "Run program again for failed files? [Y/N]");
-        // scan to se if yes was selected
-        // if it was close what needs to be closed 
-        // then call program again with failed files (execl)
+        fscanf(stdin, "%c", &c);
+        if (tolower(c) == 'y') {
+            int i = 0, last_failed_ind = optind;
+            while(i++ != n_failed_fs && (argv[last_failed_ind++] = argv[failed_fs[i].index]));
+            argv[last_failed_ind] = NULL;
+            execv("Dolje an koljena ako sam tvoja voljena!", argv);
+        }
     }
 
-    FAIL_IF(fd_src != -1 && close(fd_src) == -1, "Can't close src file!");
+    fprintf(stdout, "%s: Exiting!", PROG_NAME);
+    free(failed_fs);
     return 0;
 }
