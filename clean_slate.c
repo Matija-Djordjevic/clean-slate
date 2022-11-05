@@ -32,6 +32,10 @@
         }\
     } while(0);
 
+#define SUCCESS             (-1)
+#define FAILURE_AND_EXIT    (0)
+#define FAILURE_AND_RETRY   (1)
+
 
 #define USE_ZEROS       (1<<0)
 #define USE_ONES        (1<<1)
@@ -64,9 +68,9 @@ typedef struct fail_info {
 static int fd_source = -1;
 static int fd_wipe;
 static int first_last = 0;
-static int fs_bytes;
+static int file_size_bytes;
 static int wipe_prec;
-
+static int i_first_file; //index of first file path in argv after getopt_long() modifies it
 static time_t start_tm, wipe_start_tm, diff_tm;
 static struct tm *lt;
 
@@ -94,11 +98,10 @@ bool wipe_gutmann   ();
 
 bool wipe_file() {
 
-    //get space allocated for faile in bytes
     struct stat sb;
     if (fstat(fd_wipe, &sb) == -1) 
         return false;
-    fs_bytes = sb.st_blocks * 512;
+    file_size_bytes = sb.st_blocks * 512;
 
     //FIFO and socket files can't be wiped
     if (S_ISSOCK(sb.st_mode) || S_ISFIFO(sb.st_mode)) 
@@ -117,11 +120,7 @@ bool wipe_file() {
              || flags & USE_GUTMANN  && !wipe_gutmann());
 }
 
-
-
-int main (int argc, char **argv) {
-    start_tm = time(NULL);
-    srand(time(start_tm));
+void set_options (const int argc, char * const argv[]) {
 
     int opt;
     while((opt = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
@@ -175,27 +174,36 @@ int main (int argc, char **argv) {
                 fprintf(stdout, "Overwriting by coping bytes from source file: \'%s\'\n(No wipe algorithm will be used)\n", optarg + 1);
                 break;
             case 't':
-                //work on this
+                first_last = atoi(optarg + 1);
+                FAIL_IF(first_last == 0 || first_last != strtol(optarg + 1, NULL, 10), "Argument to -t/--first must be a positive intiger!");
                 break;
         }
     }
 
-    // if no wipe algorithm was selected, file(s) will be overwriten using zeros (USE_ZEROS)
+    // if no wipe algorithm was selected and no source file was set, file(s) will be overwriten using zeros (USE_ZEROS)
     if (!(flags & ALGS_MASK) && fd_source != -1)
         flags |= USE_ZEROS;
 
+    
+    FAIL_IF(optind == argc, "Missing file opperand!");
+    i_first_file = optind;
+
+}
+
+int wipe_files (const int argc, char *argv[]) {
 
     // see how much files we have to wipe
-    uint32_t n_files = argc - optind;
-    FAIL_IF(n_files == 0, "Missing file opperand!");
+    uint32_t n_files = i_first_file;
+    while(argv[++n_files] != NULL);
 
     // for gathering info on failed files
     fail_info *failed_fs = malloc(n_files * sizeof(fail_info));
     int n_failed_fs = 0;
 
 
-    for (int i = optind; i < argc; i++) {
+    for (int i = i_first_file; argv[i] != NULL; i++) {
         fprintf("Wiping file: '%s'\n", argv[i]);
+        
         wipe_start_tm = time(NULL);
         wipe_prec = 0;
 
@@ -204,21 +212,18 @@ int main (int argc, char **argv) {
             && errno == EACCES && flags & FORCE_OPEN
             && (chmod(argv[i], S_IRUSR | S_IWUSR) == -1 || (fd_wipe = open(argv[i], O_RDWR)) == -1)
             || fd_wipe == -1
-            // if we get fd than we can try and wipe it
+            // if we get fd than we can try and wipe. Wipe file takes care of fd_wipe disposal
             || !wipe_file(fd_wipe))
             failed_fs[n_failed_fs++] = (fail_info){i, errno, wipe_start_tm, time(NULL), wipe_prec}; 
-        close(fd_wipe);
         
         diff_tm = time(NULL) - wipe_start_tm;
         lt = localtime(&diff_tm);
         fprintf(stdout, "Time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
     }
-    FAIL_IF(fd_source != -1 && close(fd_source) == -1, "Can't close src file!");
 
     diff_tm = start_tm - time(NULL);
     lt = localtime(&diff_tm);
     fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-
 
     // if existing, display info about failed files and prompt user to run the program agiain with only failed files and same flags
     if (n_failed_fs != 0) {
@@ -243,15 +248,34 @@ int main (int argc, char **argv) {
              * change argv again by putting failed file paths right after the flags, terminate it wihth NULL 
              * after the last failed file path and pass it to execv
              */             
-            int i = 0, last_failed_ind = optind;
+            int i = 0, last_failed_ind = i_first_file;
             while(i++ != n_failed_fs && (argv[last_failed_ind++] = argv[failed_fs[i].index]));
             argv[last_failed_ind] = NULL;
+            
             free(failed_fs);
-            execv("Dolje an koljena ako sam tvoja voljena!", argv);
+            return FAILURE_AND_RETRY;
         }
+
+        free(failed_fs);
+        return FAILURE_AND_EXIT;
     }
 
-    fprintf(stdout, "%s: Done!\n", PROG_NAME);
     free(failed_fs);
+    return SUCCESS;
+
+}
+
+int main (int argc, char **argv) {
+    start_tm = time(NULL);
+    srand(time(start_tm));
+
+    set_options(argc, argv);
+
+    int fin_status;
+    while((fin_status = wipe_files(argc, argv)) == FAILURE_AND_RETRY);
+
+    fprintf(stdout, "%s", (fin_status == SUCCESS)? "Program finished with no errors!" : "Program finished with errors!");
+
+    FAIL_IF(fd_source != -1 && close(fd_source) == -1, "Can't close src file!");
     return 0;
 }
