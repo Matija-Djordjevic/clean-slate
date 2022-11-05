@@ -104,7 +104,7 @@ bool wipe_file() {
     if (S_ISSOCK(sb.st_mode) || S_ISFIFO(sb.st_mode)) 
         return false;
 
-    return !(   fd_source != -1           && !wipe_source()
+    return !(   fd_source != -1      && !wipe_source()
              || flags & USE_ZEROS    && !wipe_zeros()
              || flags & USE_ONES     && !wipe_ones()
              || flags & USE_PSEUDO   && !wipe_pseudo()
@@ -189,11 +189,11 @@ int main (int argc, char **argv) {
     uint32_t n_files = argc - optind;
     FAIL_IF(n_files == 0, "Missing file opperand!");
 
-    // get info on failed failed files
+    // for gathering info on failed files
     fail_info *failed_fs = malloc(n_files * sizeof(fail_info));
     int n_failed_fs = 0;
 
-    // main loop
+
     for (int i = optind; i < argc; i++) {
         fprintf("Wiping file: '%s'\n", argv[i]);
         wipe_start_tm = time(NULL);
@@ -204,7 +204,7 @@ int main (int argc, char **argv) {
             && errno == EACCES && flags & FORCE_OPEN
             && (chmod(argv[i], S_IRUSR | S_IWUSR) == -1 || (fd_wipe = open(argv[i], O_RDWR)) == -1)
             || fd_wipe == -1
-            // if we get fd than we try and wipe file
+            // if we get fd than we can try and wipe it
             || !wipe_file(fd_wipe))
             failed_fs[n_failed_fs++] = (fail_info){i, errno, wipe_start_tm, time(NULL), wipe_prec}; 
         close(fd_wipe);
@@ -234,6 +234,7 @@ int main (int argc, char **argv) {
         }
         
         fprintf(stdout, "Run program again for failed files? [Y/N]");
+
         char c;
         fscanf(stdin, "%c", &c);
         if (tolower(c) == 'y') {
