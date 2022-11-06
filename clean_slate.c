@@ -57,21 +57,19 @@
 uint32_t flags = 0;
 
 
-typedef struct fail_info {
-    int index;
+typedef struct info {
+    bool wipe_failed;
     int error;
     int prec;
     time_t start_tm;
-    time_t termination_tm;
-} fail_info;
+    time_t end_time;
+} w_info;
 
 static int fd_source = -1;
 static int fd_wipe;
 static int first_last = 0;
 static int file_size_bytes;
-static int wipe_prec;
-static int i_first_file; //index of first file path in argv after getopt_long() modifies it
-static time_t start_tm, wipe_start_tm, diff_tm;
+static int firs_fp; 
 static struct tm *lt;
 
 struct option const long_opts[] = {
@@ -186,96 +184,94 @@ void set_options (const int argc, char * const argv[]) {
 
     
     FAIL_IF(optind == argc, "Missing file opperand!");
-    i_first_file = optind;
+    firs_fp = optind;
+
+}
+
+void display_wipe_info (char * const argv[], const w_info *fs_info, const int last_fp) {
+
+    for(int i = 0; i < last_fp - firs_fp; i++) {
+            fprintf(stdout, "File: '%s'\n", argv[i + firs_fp]);
+
+            if (fs_info[i].wipe_failed) fprintf(stdout, "File coudn't be wiped: %s\n", strerror(fs_info[i].error));
+            
+            fprintf(stdout, "Started at: %d\n", fs_info[i].start_tm);
+            
+            fprintf(stdout, "%s at: %d\n", (fs_info[i].wipe_failed)? "Failed" : "Finished", fs_info[i].end_time);
+            
+            fprintf(stdout, "Completed: %d\%\n\n",  fs_info[i].prec);
+    }
 
 }
 
 int wipe_files (const int argc, char *argv[]) {
 
-    // see how much files we have to wipe
-    uint32_t n_files = i_first_file;
-    while(argv[++n_files] != NULL);
+    int last_fp = firs_fp;
+    while(argv[++last_fp] != NULL);
 
-    // for gathering info on failed files
-    fail_info *failed_fs = malloc(n_files * sizeof(fail_info));
-    int n_failed_fs = 0;
-
-
-    for (int i = i_first_file; argv[i] != NULL; i++) {
-        fprintf("Wiping file: '%s'\n", argv[i]);
+    bool one_failed = false;
+    w_info *fs_info = malloc((last_fp - firs_fp) * sizeof(w_info));
+    for (int i = firs_fp; i < last_fp; i++) {
         
-        wipe_start_tm = time(NULL);
-        wipe_prec = 0;
+        fs_info[i].start_tm = time(NULL);
+        fs_info[i].prec = 0;
+        fs_info[i].wipe_failed = (  (fd_wipe = open(argv[i], O_RDWR)) == -1
+                                    && errno == EACCES && flags & FORCE_OPEN
+                                    && (chmod(argv[i], S_IRUSR | S_IWUSR) == -1 || (fd_wipe = open(argv[i], O_RDWR)) == -1)
+                                    || fd_wipe == -1
+                                    || !wipe_file(fd_wipe));
+        fs_info[i].error = errno;
+        fs_info[i].end_time = time(NULL);
 
-        // if the file can't be opened, try to change it's read and write permissions and open it again
-        if((fd_wipe = open(argv[i], O_RDWR)) == -1
-            && errno == EACCES && flags & FORCE_OPEN
-            && (chmod(argv[i], S_IRUSR | S_IWUSR) == -1 || (fd_wipe = open(argv[i], O_RDWR)) == -1)
-            || fd_wipe == -1
-            // if we get fd than we can try and wipe. Wipe file takes care of fd_wipe disposal
-            || !wipe_file(fd_wipe))
-            failed_fs[n_failed_fs++] = (fail_info){i, errno, wipe_start_tm, time(NULL), wipe_prec}; 
-        
-        diff_tm = time(NULL) - wipe_start_tm;
-        lt = localtime(&diff_tm);
-        fprintf(stdout, "Time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
+        one_failed = (fs_info[i].wipe_failed)? true : one_failed;
     }
 
-    diff_tm = start_tm - time(NULL);
-    lt = localtime(&diff_tm);
-    fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-
-    // if existing, display info about failed files and prompt user to run the program agiain with only failed files and same flags
-    if (n_failed_fs != 0) {
-        fprintf(stdout, "%s: Failed to wipe %d out of %d file%s!\nFailed files info:\n\n"
-                , PROG_NAME, n_failed_fs, n_files, (n_files > 1)? "s":"");
-        
-        for(int i = 0; i < n_failed_fs; i++) {
-            fprintf(stdout, "File: '%s'\n",         failed_fs[i].index); 
-            fprintf(stdout, "Reason: %s\n",         strerror(failed_fs[i].error));
-            fprintf(stdout, "Started at: %d\n",     failed_fs[i].start_tm);
-            fprintf(stdout, "Failed at: %d\n",      failed_fs[i].termination_tm);
-            fprintf(stdout, "Completed: %d\%\n\n",  failed_fs[i].prec);
-        }
-        
+    display_wipe_info(argv, fs_info, last_fp - firs_fp);
+    
+    if (one_failed) {
         fprintf(stdout, "Run program again for failed files? [Y/N]");
 
         char c;
         fscanf(stdin, "%c", &c);
         if (tolower(c) == 'y') {
-            /* 
-             * getopt_long modified argv so that flags come first than file paths
-             * change argv again by putting failed file paths right after the flags, terminate it wihth NULL 
-             * after the last failed file path and pass it to execv
-             */             
-            int i = 0, last_failed_ind = i_first_file;
-            while(i++ != n_failed_fs && (argv[last_failed_ind++] = argv[failed_fs[i].index]));
-            argv[last_failed_ind] = NULL;
-            
-            free(failed_fs);
+            int last_failed_fp = firs_fp;
+            for (int i = 0; i < last_fp - firs_fp; i++) 
+                if (fs_info[i].wipe_failed) 
+                    argv[last_failed_fp++] = argv[i + firs_fp];
+
+            argv[last_failed_fp] = NULL;
+
+            free(fs_info);
             return FAILURE_AND_RETRY;
         }
 
-        free(failed_fs);
+        free(fs_info);
         return FAILURE_AND_EXIT;
     }
 
-    free(failed_fs);
+    free(fs_info);
     return SUCCESS;
 
 }
 
 int main (int argc, char **argv) {
-    start_tm = time(NULL);
-    srand(time(start_tm));
+    time_t start_tm = time(NULL);
 
     set_options(argc, argv);
 
+    
     int fin_status;
     while((fin_status = wipe_files(argc, argv)) == FAILURE_AND_RETRY);
 
+    FAIL_IF(fd_source != -1 && close(fd_source) == -1, "Can't close src file!");
+
+    
     fprintf(stdout, "%s", (fin_status == SUCCESS)? "Program finished with no errors!" : "Program finished with errors!");
 
-    FAIL_IF(fd_source != -1 && close(fd_source) == -1, "Can't close src file!");
+    time_t diff_tm = start_tm - time(NULL);
+    lt = localtime(&diff_tm);
+    fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
+
+
     return 0;
 }
