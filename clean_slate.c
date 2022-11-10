@@ -1,3 +1,10 @@
+/*
+    File names will always be wiped the same way, regardless of the wipe method selected.
+    ext4
+
+*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -32,42 +39,42 @@
         }\
     } while(0);
 
+#define DEF_BUF_SIZE (8000)
+
 enum FinishStatus {
     FAILURE_EXIT    = 0,     
     FALIURE_RETRY   = 1,     
     SUCCESS_EXIT    = 2     
 };
 
+
 typedef enum WipeAlgs {
     USE_NONE        = 0,
-    USE_ZEROS       = 1,  //-z    
-    USE_ONES        = 2,  //-o
-    USE_PSEUDO      = 3,  //-p
-    USE_GOST        = 4,  //-r
-    USE_AIRFORCE    = 5,  //-c
-    USE_ARMY        = 6,  //-a
-    USE_HMG         = 7,  //-b
-    USE_DOD         = 8,  //-d
-    USE_PFITZNER    = 9,  //-n
-    USE_GUTMANN     = 10, //-g
-    USE_SOURCE      = 11  //-s
+    USE_ZEROS       = 1,  // -z    
+    USE_ONES        = 2,  // -o
+    USE_PSEUDO      = 3,  // -p
+    USE_GOST        = 4,  // -r
+    USE_AIRFORCE    = 5,  // -c
+    USE_ARMY        = 6,  // -a
+    USE_HMG         = 7,  // -b
+    USE_DOD         = 8,  // -d
+    USE_PFITZNER    = 9,  // -n
+    USE_GUTMANN     = 10, // -g
+    USE_SOURCE      = 11  // -s
 } WipeAlgs;
 
 static WipeAlgs wipe_with;
 
 
 typedef struct Options {
-    bool delete_after; //-e
-    bool displ_info;   //-i
-    bool force_open;   //-f
-    int first;    //-t ( 0 if flag is not set)
+    bool delete_after;  // -e
+    bool displ_info;    // -i
+    bool force_open;    // -f
+    int first;          // -t (0 if flag is not set)
 } Options;
 
 static Options options;
 
-int first_fp;   
-int last_fp;
-int size;
 
 typedef struct w_info {
     bool wipe_failed;
@@ -85,6 +92,11 @@ const struct option long_opts[] = {
     {"first" , required_argument, NULL, 't'}
 };
 const char short_opts[] = "zoprcabdngs:heift:";
+
+int first_fp;   
+int last_fp;
+int size;
+
 
 void usage() {
     fprintf(stdout, "Usage: %s [FILES] [FLAGS]", PROG_NAME);
@@ -157,6 +169,34 @@ bool wipe_gutmann (const int fd, w_info *info) {
 }
 
 
+bool wipe_file_name(const char *old_path, w_info *info) { 
+    // check if / or "\"
+    const int file_name_beggining = (strrchr(old_path, '/'))? old_path - strrchr(old_path, '/') : 0;
+    // terminated by \0?
+    char *new_path = malloc(strlen(old_path) + 1);
+    new_path[strlen(old_path)] = '\0';
+
+    int iters = 100;
+    while (iters) {
+        int i = file_name_beggining;
+        while (i < strlen(new_path)) {
+            char c = rand();
+            if (c != '.' || c != '..' || c != '/') {
+                new_path[i++] = c;
+            }
+        }
+        struct stat sb;
+        // mkaing sure the file doesn't exist
+        if (lstat(new_path, &sb) == -1) {
+            // if errno indcates that file already exists - try again
+            // if errno isdicates anything but that - failurer with message
+        }
+        rename(old_path, new_path);
+        // ^ fail if this can't rename
+        iters--; //on succes
+    }
+}
+
 bool failed_here(w_info *info, const char *err_msg) {
     info->end_tm = time(NULL);
     info->wipe_failed = true;
@@ -171,17 +211,17 @@ bool failed_here(w_info *info, const char *err_msg) {
 
 bool wipe_file(const char *path, w_info *info) {
     info[0] = (w_info) {
-        false,      //wipe_failed
-        NULL,       //errors
-        0,          //n_errors
-        0,          //completed_prec
-        time(NULL), //start_tm
-        time(NULL)  //end_tm
+        false,      // wipe_failed
+        NULL,       // errors
+        0,          // n_errors
+        0,          // completed_prec
+        time(NULL), // start_tm
+        time(NULL)  // end_tm
     };
 
     fprintf("Wiping file: '%s'", path);
 
-    // if the file can't be opened, try and change the users permissions and try opening it again
+    // if the file can't be opened, try changing the users permissions opening it again
     int fd;
     if ((fd = open(path, O_RDWR)) == -1
         && errno == EACCES && options.force_open
@@ -204,7 +244,9 @@ bool wipe_file(const char *path, w_info *info) {
              ||wipe_with == USE_HMG         && !wipe_hmg(fd, info)
              ||wipe_with == USE_DOD         && !wipe_dod(fd, info)
              ||wipe_with == USE_PFITZNER    && !wipe_pfitzner(fd, info)
-             ||wipe_with == USE_GUTMANN     && !wipe_gutmann(fd, info));
+             ||wipe_with == USE_GUTMANN     && !wipe_gutmann(fd, info)
+             
+             ||options.delete_after         && !wipe_file_name(path, info));
 }
 
 void display_wipe_info (char * const argv[], const w_info *fs_info, const int n_fs_info) {
@@ -212,10 +254,10 @@ void display_wipe_info (char * const argv[], const w_info *fs_info, const int n_
     for(int i = 0; i < n_fs_info; i++) {
             fprintf(stdout, "%d)\nFile: '%s'\n", i + 1, argv[i + first_fp]);
 
-            fprintf(stdout, "%s\n", (fs_info[i].wipe_failed)? "Wipe failed!\n" : "Succesfull wipe!\n");
+            fprintf(stdout, "%s\n", (fs_info[i].wipe_failed)? "Success!\n" : "Failure!\n");
 
             if (fs_info[i].wipe_failed) {
-                fprintf(stdout, "Failure reasons: \n");
+                fprintf(stdout, "Failure reason(s): \n");
                 for (int j = 0; j < fs_info[i].n_errors; j++) {
                     fprintf(stdout, "- %s\n", fs_info[i].errors[j]);
                 }
@@ -238,12 +280,11 @@ void free_info (w_info **fs_info, const int n) {
 }
 
 int wipe_files (const int argc, char *argv[]) {
-
     last_fp = first_fp;
     while(argv[++last_fp] != NULL);
+    int n_fs_info = last_fp - first_fp;
 
     bool one_failed = false;
-    int n_fs_info = last_fp - first_fp;
     w_info *fs_info = malloc((n_fs_info) * sizeof(w_info));
     for (int i = first_fp; i < last_fp; i++) {
         one_failed = (wipe_file(argv[i], &fs_info[i - first_fp]))? one_failed : true;
@@ -258,7 +299,7 @@ int wipe_files (const int argc, char *argv[]) {
         fscanf(stdin, "%c", &c);
         if (tolower(c) == 'y') {
             int last_failed_fp = first_fp;
-            for (int i = 0; i < last_fp - first_fp; i++) 
+            for (int i = 0; i < n_fs_info; i++) 
                 if (fs_info[i].wipe_failed) 
                     argv[last_failed_fp++] = argv[i + first_fp];
 
