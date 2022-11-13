@@ -1,9 +1,25 @@
 /*
     File names will always be wiped the same way, regardless of the wipe method selected.
     ext4
-
+    
 */
 
+// TODO finish wipe file name
+// TODO find out other things regarding the file that you have to wipe 
+// TODO message when file doens't exsit on first open()
+// TODO find documnetation for each and every wipe algorithm
+// TODO implement 5 out of 10 algorithms and come back to finish the rest after the entire program has been written
+// TODO find out how to check what file system is beeing used on the partition, the current file is on
+// TODO add support for wiping entire partitions to make sure that the file is safely wiped
+// TODO check the difference between the directory, drive and parition when it comes to wiping 
+// TODO add the fucking progress bar let it be a seperate function show_bar(precentage completed) that removes only itsef and writes it agian
+// TODO ^^^ find a wat to copy everything that was ptinted to terminal on to a buffer, so you can run the progress bar
+// TODO Finish the remaining 5 wipe methods
+// TODO if still up for it, implement wipe from source
+// TODO give user better controll over the porgram (what parts of wipe algs does he want to implement, ...)
+
+
+// TODO rewrite code to be actually work
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -168,33 +184,51 @@ bool wipe_gutmann (const int fd, w_info *info) {
     return true;
 }
 
+#define DEF_FILE_NAME_TRYS (1000)
+
+bool new_fn(const int fn_length, const char *fn) {
+    // generate random file name DEF_FILE_NAME_TRYS of times
+    // if that succedess return new file_name
+    
+    // if it doesnt 
+    // find a dictionarry the file is beeing concetrated in
+    // change current working directory 
+    // list all of the files in that directory that are of the length fn_length
+    // create a table of all accaptable file characters
+    // for i in range 0 -> fn_length see eaxeactly which symbols are beeing used in naminf of each file
+    // pick a random stop where one or more symbols are not beeing used
+    // pick a random symbol from them 
+    // that symbol is fihex
+    // generate rest of the (fn_length - 1) symbols randomly
+    // try to randomize that symbol
+    // if failed, stick with original picked symbol
+    // return new file name
+}
 
 bool wipe_file_name(const char *old_path, w_info *info) { 
-    // check if / or "\"
-    const int file_name_beggining = (strrchr(old_path, '/'))? old_path - strrchr(old_path, '/') : 0;
-    // terminated by \0?
-    char *new_path = malloc(strlen(old_path) + 1);
-    new_path[strlen(old_path)] = '\0';
+    /*
+        allocate memory for new file path equal to the memory of the new file path 
+        see if argv els are already terminated by 0 by default
+        if not than allocate for memory + 1
 
-    int iters = 100;
-    while (iters) {
-        int i = file_name_beggining;
-        while (i < strlen(new_path)) {
-            char c = rand();
-            if (c != '.' || c != '..' || c != '/') {
-                new_path[i++] = c;
-            }
-        }
-        struct stat sb;
-        // mkaing sure the file doesn't exist
-        if (lstat(new_path, &sb) == -1) {
-            // if errno indcates that file already exists - try again
-            // if errno isdicates anything but that - failurer with message
-        }
-        rename(old_path, new_path);
-        // ^ fail if this can't rename
-        iters--; //on succes
-    }
+        get the length of current file name after the last '/'
+        (check if "....." is a valid file path or od . and .. have to be terminated with '/')
+
+        get the pointer to the first character of file name 
+        pass both the pointer and the lenght to new_fn 
+        new_fn won't return an existing file name
+        if it fails, return false nad msg, "unable to wipe file"
+
+        keep renaming file untill the new file name if of a length 0 (+ everything before last '/' and '/')
+        new_fp needs to be constantly truncated by 1 by new_fp == '\0'
+        rename(takes null temrminated strings!!!!!!)
+        if you can't rename file of certain length, don't quit, remember how much times this happened
+        decrement by 1 length
+
+        return succes status and if failure happended on some lengths
+        , call failed_here, where in the str buffer you let the user know how many times 
+        (for how many lengths this funciton has failed)
+    */
 }
 
 bool failed_here(w_info *info, const char *err_msg) {
@@ -223,7 +257,7 @@ bool wipe_file(const char *path, w_info *info) {
 
     // if the file can't be opened, try changing the users permissions opening it again
     int fd;
-    if ((fd = open(path, O_RDWR)) == -1
+    if ((fd = open(path, O_RDWR)) == -1 // da li ovde da gledamo da li fajl postoji?
         && errno == EACCES && options.force_open
         && (chmod(path, S_IRUSR | S_IWUSR) == -1 || (fd = open(path, O_RDWR)) == -1)
         || fd == -1) return failed_here(info, "Couldn't open the file!");
