@@ -55,7 +55,8 @@
         }\
     } while(0);
 
-#define DEF_BUF_SIZE (8000)
+#define DEF_BUF_SIZE        (8000)
+#define DEF_FILE_NAME_TRYS  (1000)
 
 enum FinishStatus {
     FAILURE_EXIT    = 0,     
@@ -184,52 +185,7 @@ bool wipe_gutmann (const int fd, w_info *info) {
     return true;
 }
 
-#define DEF_FILE_NAME_TRYS (1000)
 
-bool new_fn(const int fn_length, const char *fn) {
-    // generate random file name DEF_FILE_NAME_TRYS of times
-    // if that succedess return new file_name
-    
-    // if it doesnt 
-    // find a dictionarry the file is beeing concetrated in
-    // change current working directory 
-    // list all of the files in that directory that are of the length fn_length
-    // create a table of all accaptable file characters
-    // for i in range 0 -> fn_length see eaxeactly which symbols are beeing used in naminf of each file
-    // pick a random stop where one or more symbols are not beeing used
-    // pick a random symbol from them 
-    // that symbol is fihex
-    // generate rest of the (fn_length - 1) symbols randomly
-    // try to randomize that symbol
-    // if failed, stick with original picked symbol
-    // return new file name
-}
-
-bool wipe_file_name(const char *old_path, w_info *info) { 
-    /*
-        allocate memory for new file path equal to the memory of the new file path 
-        see if argv els are already terminated by 0 by default
-        if not than allocate for memory + 1
-
-        get the length of current file name after the last '/'
-        (check if "....." is a valid file path or od . and .. have to be terminated with '/')
-
-        get the pointer to the first character of file name 
-        pass both the pointer and the lenght to new_fn 
-        new_fn won't return an existing file name
-        if it fails, return false nad msg, "unable to wipe file"
-
-        keep renaming file untill the new file name if of a length 0 (+ everything before last '/' and '/')
-        new_fp needs to be constantly truncated by 1 by new_fp == '\0'
-        rename(takes null temrminated strings!!!!!!)
-        if you can't rename file of certain length, don't quit, remember how much times this happened
-        decrement by 1 length
-
-        return succes status and if failure happended on some lengths
-        , call failed_here, where in the str buffer you let the user know how many times 
-        (for how many lengths this funciton has failed)
-    */
-}
 
 bool failed_here(w_info *info, const char *err_msg) {
     info->end_tm = time(NULL);
@@ -240,6 +196,41 @@ bool failed_here(w_info *info, const char *err_msg) {
     strcpy(info->errors[info->n_errors - 1], err_msg);
 
     return false;
+}
+
+bool new_file_name(char *full_path, char *file_name, const int len) {
+    // random trys
+    int tries = 0;
+    while (tries++ != DEF_FILE_NAME_TRYS) {
+        for (int i = 0; i < len; i++) {
+            do {
+                file_name[i] = rand();
+            } while(file_name[i] == '.' || file_name[i] == '/' || file_name[i] == '\0');
+        }
+        if (access(full_path, F_OK)) return true;
+    }
+
+    return false;    
+}
+
+bool wipe_file_name(char *old_path, w_info *info) { 
+    // TODO len
+    int len = strlen(old_path) + 1;
+    char *new_path = malloc(len);
+    memcpy(new_path, old_path, len);
+    const char *file_name_p = strrchr(new_path, '/');
+    file_name_p = (file_name_p)? file_name_p : new_path;
+ 
+    while(len) {
+        if (new_file_name(new_path, file_name_p, len) 
+            && rename(old_path, new_path) == -1)
+            return failed_here(info, "File change name failure!");
+        
+        
+        --len;
+        old_path[len] = '\0';
+        new_path[len] = '\0';
+    }
 }
 
 
