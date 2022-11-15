@@ -112,7 +112,11 @@ int first_fp;
 int last_fp;
 int size;
 
-#define PERCENTAGE(curr, max) (100 - ((((MAX) - (CURR)) * 100) / (MAX)))
+
+#define PROG_BAR_SIZE (100)
+
+// TODO rename this
+#define COMPLETED(CURR, MAX) (PROG_BAR_SIZE - ((((MAX) - (CURR)) * PROG_BAR_SIZE) / (MAX)))
 
 void update_buf(const long int curr, const long int max) {
     const char *prefix = "COMPLETED: [";
@@ -120,17 +124,19 @@ void update_buf(const long int curr, const long int max) {
     
     const int pref_len = strlen(prefix);
     const int suf_len = strlen(sufix);
-    const int buf_len = pref_len + suf_len + 100 + 1;
+    const int buf_len = pref_len + suf_len + PROG_BAR_SIZE + 1;
 
     prog_bar_buf = calloc(' ', buf_len);
-    
-    memcpy(prog_bar_buf                     , prefix, pref_len);
-    memcpy(prog_bar_buf + (pref_len + 100)  , sufix , suf_len);
     prog_bar_buf[buf_len - 1] = '\0';
 
-    for (int i = 0; i < 100; i++) {
-        prog_bar_buf[i] = (i <= PRECENTAGE(curr, max))? ' ' : 219;
+    memcpy(prog_bar_buf                             , prefix, pref_len);
+    memcpy(prog_bar_buf + (pref_len + PROG_BAR_SIZE), sufix , suf_len);
+
+
+    for (int i = 0; i < PROG_BAR_SIZE; i++) {
+        prog_bar_buf[i] = (i <= COMPLETED(curr, max))? ' ' : 219;
     }
+    // print
 }
 
 void usage() {
