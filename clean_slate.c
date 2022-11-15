@@ -4,20 +4,16 @@
     
 */
 
-// TODO finish wipe file name
-// TODO find out other things regarding the file that you have to wipe 
-// TODO message when file doens't exsit on first open()
+// TODO what constitutes a file footprint? 
 // TODO find documnetation for each and every wipe algorithm
 // TODO implement 5 out of 10 algorithms and come back to finish the rest after the entire program has been written
-// TODO find out how to check what file system is beeing used on the partition, the current file is on
 // TODO add support for wiping entire partitions to make sure that the file is safely wiped
 // TODO check the difference between the directory, drive and parition when it comes to wiping 
-// TODO add the fucking progress bar let it be a seperate function show_bar(precentage completed) that removes only itsef and writes it agian
-// TODO ^^^ find a wat to copy everything that was ptinted to terminal on to a buffer, so you can run the progress bar
 // TODO Finish the remaining 5 wipe methods
 // TODO if still up for it, implement wipe from source
 // TODO give user better controll over the porgram (what parts of wipe algs does he want to implement, ...)
 
+// TODO add the progress bar let it be a seperate function show_bar(precentage completed) that removes only itsef and writes it agian
 
 // TODO rewrite code to be actually work
 
@@ -103,6 +99,8 @@ typedef struct w_info {
 } w_info;
 
 
+char *prog_bar_buf = NULL;
+
 const struct option long_opts[] = {
     {"source", required_argument, NULL, 's'}, 
     {"help"  , no_argument      , NULL, 'h'},
@@ -114,6 +112,26 @@ int first_fp;
 int last_fp;
 int size;
 
+#define PERCENTAGE(curr, max) (100 - ((((MAX) - (CURR)) * 100) / (MAX)))
+
+void update_buf(const long int curr, const long int max) {
+    const char *prefix = "COMPLETED: [";
+    const char *sufix = "]";
+    
+    const int pref_len = strlen(prefix);
+    const int suf_len = strlen(sufix);
+    const int buf_len = pref_len + suf_len + 100 + 1;
+
+    prog_bar_buf = calloc(' ', buf_len);
+    
+    memcpy(prog_bar_buf                     , prefix, pref_len);
+    memcpy(prog_bar_buf + (pref_len + 100)  , sufix , suf_len);
+    prog_bar_buf[buf_len - 1] = '\0';
+
+    for (int i = 0; i < 100; i++) {
+        prog_bar_buf[i] = (i <= PRECENTAGE(curr, max))? ' ' : 219;
+    }
+}
 
 void usage() {
     fprintf(stdout, "Usage: %s [FILES] [FLAGS]", PROG_NAME);
@@ -248,7 +266,7 @@ bool wipe_file(const char *path, w_info *info) {
 
     // if the file can't be opened, try changing the users permissions opening it again
     int fd;
-    if ((fd = open(path, O_RDWR)) == -1 // da li ovde da gledamo da li fajl postoji?
+    if ((fd = open(path, O_RDWR)) == -1 
         && errno == EACCES && options.force_open
         && (chmod(path, S_IRUSR | S_IWUSR) == -1 || (fd = open(path, O_RDWR)) == -1)
         || fd == -1) return failed_here(info, "Couldn't open the file!");
@@ -396,6 +414,6 @@ int main (int argc, char **argv) {
     struct tm *lt = localtime(&diff_tm);
     fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
 
-
+    free(prog_bar_buf);
     return 0;
 }
