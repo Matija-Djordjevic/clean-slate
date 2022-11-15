@@ -27,6 +27,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <fcntl.h>
 #include <time.h>
 #include <ctype.h>
@@ -111,7 +112,7 @@ const char short_opts[] = "zoprcabdngs:heift:";
 int first_fp;   
 int last_fp;
 int size;
-
+bool wrong_file_system = false;
 
 #define PROG_BAR_SIZE (100)
 
@@ -269,6 +270,10 @@ bool wipe_file(const char *path, w_info *info) {
     };
 
     fprintf("Wiping file: '%s'", path);
+
+    struct statfs sf;                       //EXT4_SUPER_MAGIC
+    if (!statfs(path, &sf) && sf.f_type != 0xef53) 
+        fprintf(stdout, "the drive this file is stored on doesn't use ext4 file system. File might not be wipped correctly!", PROG_NAME);
 
     // if the file can't be opened, try changing the users permissions opening it again
     int fd;
