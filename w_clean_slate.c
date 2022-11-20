@@ -64,11 +64,9 @@ typedef struct Options {
 
 Options options;
 
-// total number of passed file paths on start of the program
-size_t n_files;
 
 // index of the first file path in argv
-int fst_file_path_ind;
+size_t i_first_fp;
 
 // buffer for representing progress bar and/or num of passes
 char *prog_buf = NULL;
@@ -282,7 +280,7 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
 
 void set_options (const int argc, char * const argv[]) {
     options = (Options) {
-        W_NONE,   // method
+        W_NONE,     // method
         false,      // delete_after
         false,      // displ_info
         false,      // force_open
@@ -316,7 +314,7 @@ void set_options (const int argc, char * const argv[]) {
 
     if (options.method == W_NONE) options.method = W_ZEROS;
 
-    FAIL_IF((n_files = argc - optind) == 0, "Mising file operand!"); 
+    FAIL_IF((i_first_fp = optind) == argc, "Mising file operand!"); 
 }
 
 
@@ -328,10 +326,9 @@ int main(int argc, char *argv[]) {
     set_options(argc, argv);
     
     
-    for(size_t i = 0; i < n_files; i++) 
-        wipe_file(argv[argc - n_files + i]);
+    while(i_first_fp < argc) 
+        wipe_file(argv[i_first_fp++]);
 
-    // get's inited first time print_prog_buf is called
     free(prog_buf);
 
     fprintf(stdout, "%s: finished!\n", PROG_NAME);
