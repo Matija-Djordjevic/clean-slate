@@ -116,44 +116,45 @@ bool wipe_failure(const char *msg) {
 }
 
 bool wipe_name(char *old_path) {
-    char *new_path = malloc(strlen(old_path) + 1);
-    strcpy(new_path, old_path);
-    char *base = basename(new_path);
-    
-    const int dir_fd = open(dirname(new_path), O_RDONLY | O_DIRECTORY | O_SYNC);
+    char *new_path = malloc(strlen(old_path) + 1); // '\0'
 
-    size_t len = strlen(base);
-    while (len)
+    char *base = basename(new_path);
+    // pointer to beggining of the base in the path 
+    const char *base_in_path = new_path + strlen(new_path) - strlen(base);
+    char *dir = dirname(new_path);
+
+    const int dir_fd = open(dir, O_RDONLY | O_DIRECTORY | O_SYNC);
+    size_t len = strlen(base) + 1;
+    while (len--)
     {   
-        bool failed = true;
+        base[len] = '\0';
+
+        bool len_failed = true;
         size_t tries = MAX_RENAME_TRIES;
         // if each and every try of finding a new file name fails, skip this file length
         while(tries--)
         {
-            // randomize bytes of file name
-            for (size_t i = 0; i < len; i++) 
-            {
-                do
-                {
-                    base[i] = rand();
-                } while (base[i] == '\0');
-                
-            }
-            base[len] = '\0';
+            // randomize bytes of the base
+            size_t i = 0;                                           
+            while ((base[i] = rand()) == '\0' || base[i] == '/' 
+                   || ++i < len);
 
-            // check if new name already exists
-            strcpy(new_path + strlen(new_path) - len, base);
+            // check if new name doesnt exists
+            strcpy(base_in_path, base);
             if (access(new_path, F_OK)) 
+            {
+                len_failed = false;
                 break;
+            }
         }
+
+        if (len_failed)
+            continue;
 
         if (rename(old_path, new_path)) 
             return wipe_failure("Can't rename file. Deletion failed!");
 
         strcpy(old_path, new_path);
-
-        
-        len--;
     }
 
     if(unlink(old_path)) 
@@ -245,8 +246,7 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
         prog_buf[len_prog_buf - 1] = '\0';
     }
 
-    bool print_passes = count_pass || max_pass;
-    if (print_passes) 
+    if (max_pass) 
     {
         char bf[] = "00";
 
@@ -259,14 +259,12 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
     
     float prec = PRECENTAGE(count_prog, max_prog);
 
-    // fill the bar up to finished %
     char *prog_bar_start = strchr(prog_buf, '[') + 1;
     for(size_t i = 0; i < 100; i++) 
     {
         prog_bar_start[i] = (i < (int)prec)? '#':'.';
     }
 
-    // set the precentange after it
     char *prog_bar_end = strchr(prog_buf, ']');
     char bf[] = "000.000000%%"; 
     sprintf(bf, "%s%s%.6f%%",  (prec < 100)? " " : ""
@@ -275,7 +273,7 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
     memcpy(prog_bar_end + 2, bf, strlen(bf) + 1);
 
 
-    fprintf(stdout, "%s\n", (print_passes)? prog_buf : strchr(prog_buf, '\n') + 1);
+    fprintf(stdout, "%s\n", (max_pass)? prog_buf : strchr(prog_buf, '\n') + 1);
 }
 
 void set_options (const int argc, char * const argv[]) {
@@ -329,6 +327,7 @@ int main(int argc, char *argv[]) {
     while(i_first_fp < argc) 
         wipe_file(argv[i_first_fp++]);
 
+
     free(prog_buf);
 
     fprintf(stdout, "%s: finished!\n", PROG_NAME);
@@ -337,7 +336,6 @@ int main(int argc, char *argv[]) {
     s -= (d = s / 86400) * 86400;
     s -= (h = s / 3600) * 3600;
     s -= (m = s / 60) * 60;   
-
     fprintf(stdout, "Time elapsed: %ldd : %ldh : %ldm : %lds\n", d, h, m, s);
 
     return 0;
