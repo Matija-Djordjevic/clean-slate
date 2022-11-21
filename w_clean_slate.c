@@ -116,20 +116,20 @@ bool wipe_failure(const char *msg) {
 }
 
 bool wipe_name(char *old_path) {
-    char *new_path = malloc(strlen(old_path) + 1); // '\0'
+    char *new_path = malloc(strlen(old_path) + 1); 
+    memcpy(new_path, old_path, strlen(old_path) + 1);
 
     char *base = basename(new_path);
-    // pointer to beggining of the base in the path 
-    const char *base_in_path = new_path + strlen(new_path) - strlen(base);
-    char *dir = dirname(new_path);
+    const char *base_p = new_path + strlen(new_path) - strlen(base);
+    
+    const int dir_fd = open(dirname(old_path), O_RDONLY | O_DIRECTORY | O_SYNC);
 
-    const int dir_fd = open(dir, O_RDONLY | O_DIRECTORY | O_SYNC);
     size_t len = strlen(base) + 1;
     while (len--)
     {   
         base[len] = '\0';
 
-        bool len_failed = true;
+        bool len_fail = true;
         size_t tries = MAX_RENAME_TRIES;
         // if each and every try of finding a new file name fails, skip this file length
         while(tries--)
@@ -140,15 +140,15 @@ bool wipe_name(char *old_path) {
                    || ++i < len);
 
             // check if new name doesnt exists
-            strcpy(base_in_path, base);
+            strcpy(base_p, base);
             if (access(new_path, F_OK)) 
             {
-                len_failed = false;
+                len_fail = false;
                 break;
             }
         }
 
-        if (len_failed)
+        if (len_fail)
             continue;
 
         if (rename(old_path, new_path)) 
@@ -157,7 +157,7 @@ bool wipe_name(char *old_path) {
         strcpy(old_path, new_path);
     }
 
-    if(unlink(old_path)) 
+    if(unlink(new_path)) 
         return wipe_failure("Can't delete file!");
     
     if(dir_fd != -1 && close(dir_fd))
