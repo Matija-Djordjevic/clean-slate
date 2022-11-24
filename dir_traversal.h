@@ -166,8 +166,8 @@ static void d_stk_print(const d_stack *st) {
 #define NOT_IN_PAR_DIR(DEPTH, CUR_DIR_DEPTH) ((DEPTH) == (CUR_DIR_DEPTH))
 char WORKINGDIR[PATH_MAX];
 int traverse_dir_wipe(const char *path,
-                      bool (* handle_dir) (char *), 
-                      bool (* handle_file) (char *)){
+                      void (* handle_dir) (), 
+                      void (* handle_file) ()){
     
     char init_wd[PATH_MAX];
     getcwd(init_wd, sizeof(init_wd));

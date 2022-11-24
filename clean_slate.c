@@ -16,6 +16,7 @@
 #include <limits.h>
 
 #include "dir_traversal.h"
+#include "wipe_algs.h"
 
 #define PROG_NAME "Clean Slate"
 
@@ -49,7 +50,7 @@ typedef enum w_method {
     W_ONES,       // -o
     W_PSEUDO,     // -p
     W_GOST,       // -r
-    W_AIRFORCE,   // -c
+    W_AFORCE,   // -c
     W_ARMY,       // -a
     W_HMG,        // -b
     W_DOD,        // -d
@@ -183,7 +184,7 @@ bool wipe_dir(char *path) {
 }
 
 // wipe non dir file
-bool wipe_non_dir(const char *path) {
+bool wipe_non_dir(char *path) {
     fprintf(stdout, "Wiping file '%s'\n", path);
 
     // if opening fd fails and force_open is set, try to change it's access and open it again
@@ -203,7 +204,7 @@ bool wipe_non_dir(const char *path) {
     // get the size of the space allocated for the file's cont
     struct stat st;
     if (fstat(fd, &st) == -1) 
-        return wipe_failure("Couldn't get file size!");
+        return wipe_failure("Couldn't get file stats!");
 
     // socket or fifo files can't be overwriten
     if (S_ISSOCK(st.st_mode) || S_ISFIFO(st.st_mode)) 
@@ -214,7 +215,19 @@ bool wipe_non_dir(const char *path) {
 
     
     // first wipe file contents
-    // wipe file inode
+    bool failed = (  (options.method == W_ZEROS)    &&  !init_wipe(fd, wipe_zeros)
+                   ||(options.method == W_ONES)     &&  !init_wipe(fd, wipe_ones)
+                   ||(options.method == W_PSEUDO)   &&  !init_wipe(fd, wipe_pseudo)
+                   ||(options.method == W_GOST)     &&  !init_wipe(fd, wipe_gost)
+                   ||(options.method == W_AFORCE)   &&  !init_wipe(fd, wipe_airforce)
+                   ||(options.method == W_ARMY)     &&  !init_wipe(fd, wipe_army)
+                   ||(options.method == W_HMG)      &&  !init_wipe(fd, wipe_hmg)
+                   ||(options.method == W_DOD)      &&  !init_wipe(fd, wipe_dod)
+                   ||(options.method == W_PFITZNER) &&  !init_wipe(fd, wipe_pfitzner)
+                   ||(options.method == W_GUTMANN)  &&  !init_wipe(fd, wipe_gutmann)
+                   ||(options.method == W_SOURCE)   &&  !init_wipe(fd, wipe_source));
+
+    // wipe file metadata
 
     // if requested by user (by setting delete after flag) wipe file name
     if (options.delete_after)
@@ -319,7 +332,7 @@ void set_options (const int argc, char * const argv[]) {
             case 'o':   options.method = W_ONES;           break;
             case 'p':   options.method = W_PSEUDO;         break;
             case 'r':   options.method = W_GOST;           break;
-            case 'c':   options.method = W_AIRFORCE;       break;
+            case 'c':   options.method = W_AFORCE;       break;
             case 'a':   options.method = W_ARMY;           break;
             case 'b':   options.method = W_HMG;            break;
             case 'd':   options.method = W_DOD;            break;
