@@ -1,36 +1,21 @@
-/*
-    File names will always be wiped the same way, regardless of the wipe method selected.
-    ext4
-    
-*/
-
-// TODO what constitutes a file footprint? 
-// TODO find documnetation for each and every wipe algorithm
-// TODO implement 5 out of 10 algorithms and come back to finish the rest after the entire program has been written
-// TODO add support for wiping entire partitions to make sure that the file is safely wiped
-// TODO check the difference between the directory, drive and parition when it comes to wiping 
-// TODO Finish the remaining 5 wipe methods
-// TODO if still up for it, implement wipe from source
-// TODO give user better controll over the porgram (what parts of wipe algs does he want to implement, ...)
-
-// TODO add the progress bar let it be a seperate function show_bar(precentage completed) that removes only itsef and writes it agian
-
-// TODO rewrite code to be actually work
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <stdbool.h>
+#include <ctype.h>
 #include <getopt.h>
-#include <stdbool.h>
+#include <time.h>
 #include <string.h>
+#include <sys/vfs.h>
 #include <errno.h>
-#include <stdbool.h>
+#include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/vfs.h>
+#include <sys/file.h>
 #include <fcntl.h>
-#include <time.h>
-#include <ctype.h>
+#include <unistd.h>
+#include <limits.h>
+
+#include "dir_traversal.h"
 
 #define PROG_NAME "Clean Slate"
 
@@ -52,55 +37,41 @@
         }\
     } while(0);
 
-#define DEF_BUF_SIZE        (8000)
-#define DEF_FILE_NAME_TRYS  (1000)
 
-enum FinishStatus {
-    FAILURE_EXIT    = 0,     
-    FALIURE_RETRY   = 1,     
-    SUCCESS_EXIT    = 2     
-};
+#define DEF_RW_BUF_SIZE (1 << 16)
 
-
-typedef enum WipeAlgs {
-    USE_NONE        = 0,
-    USE_ZEROS       = 1,  // -z    
-    USE_ONES        = 2,  // -o
-    USE_PSEUDO      = 3,  // -p
-    USE_GOST        = 4,  // -r
-    USE_AIRFORCE    = 5,  // -c
-    USE_ARMY        = 6,  // -a
-    USE_HMG         = 7,  // -b
-    USE_DOD         = 8,  // -d
-    USE_PFITZNER    = 9,  // -n
-    USE_GUTMANN     = 10, // -g
-    USE_SOURCE      = 11  // -s
-} WipeAlgs;
-
-static WipeAlgs wipe_with;
-
+typedef enum w_method {
+    W_NONE,
+    W_ZEROS,      // -z    
+    W_ONES,       // -o
+    W_PSEUDO,     // -p
+    W_GOST,       // -r
+    W_AIRFORCE,   // -c
+    W_ARMY,       // -a
+    W_HMG,        // -b
+    W_DOD,        // -d
+    W_PFITZNER,   // -n
+    W_GUTMANN,    // -g
+    W_SOURCE,     // -s
+} w_method;
 
 typedef struct Options {
+    w_method method;
     bool delete_after;  // -e
     bool displ_info;    // -i
     bool force_open;    // -f
     int first;          // -t (0 if flag is not set)
 } Options;
 
-static Options options;
+Options options;
 
 
-typedef struct w_info {
-    bool wipe_failed;
-    char **errors;
-    int n_errors;
-    int completed_prec;
-    time_t start_tm;
-    time_t end_tm;
-} w_info;
+// index of the first file path in argv
+size_t i_first_fp;
 
+// buffer for representing progress bar and/or num of passes
+char *prog_buf = NULL;
 
-char *prog_bar_buf = NULL;
 
 const struct option long_opts[] = {
     {"source", required_argument, NULL, 's'}, 
@@ -108,37 +79,6 @@ const struct option long_opts[] = {
     {"first" , required_argument, NULL, 't'}
 };
 const char short_opts[] = "zoprcabdngs:heift:";
-
-int first_fp;   
-int last_fp;
-int size;
-bool wrong_file_system = false;
-
-#define PROG_BAR_SIZE (100)
-
-// TODO rename this
-#define COMPLETED(CURR, MAX) (PROG_BAR_SIZE - ((((MAX) - (CURR)) * PROG_BAR_SIZE) / (MAX)))
-
-void update_buf(const long int curr, const long int max) {
-    const char *prefix = "COMPLETED: [";
-    const char *sufix = "]";
-    
-    const int pref_len = strlen(prefix);
-    const int suf_len = strlen(sufix);
-    const int buf_len = pref_len + suf_len + PROG_BAR_SIZE + 1;
-
-    prog_bar_buf = calloc(' ', buf_len);
-    prog_bar_buf[buf_len - 1] = '\0';
-
-    memcpy(prog_bar_buf                             , prefix, pref_len);
-    memcpy(prog_bar_buf + (pref_len + PROG_BAR_SIZE), sufix , suf_len);
-
-
-    for (int i = 0; i < PROG_BAR_SIZE; i++) {
-        prog_bar_buf[i] = (i <= COMPLETED(curr, max))? ' ' : 219;
-    }
-    // print
-}
 
 void usage() {
     fprintf(stdout, "Usage: %s [FILES] [FLAGS]", PROG_NAME);
@@ -169,232 +109,219 @@ If no wipe algorithm flag is set, -z flag will be defaulty set.");
     exit(EXIT_SUCCESS);
 }
 
-bool wipe_zeros (const int fd, w_info *info) {
+#define MAX_RENAME_TRIES (100)
 
-    return true;
-}
-bool wipe_ones (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_pseudo (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_gost (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_airforce (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_army (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_hmg (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_dod (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_pfitzner (const int fd, w_info *info) {
-
-    return true;
-}
-bool wipe_gutmann (const int fd, w_info *info) {
-
-    return true;
-}
-
-
-
-bool failed_here(w_info *info, const char *err_msg) {
-    info->end_tm = time(NULL);
-    info->wipe_failed = true;
-    
-    info->errors = realloc(info->errors, sizeof(char *) * ++(info->n_errors));
-    info->errors[info->n_errors - 1] = malloc(strlen(err_msg) + 1);
-    strcpy(info->errors[info->n_errors - 1], err_msg);
-
+bool wipe_failure(const char *msg) {
+    fprintf(stdout, "%s\n", msg);
     return false;
 }
 
-bool new_file_name(char *full_path, char *file_name, const int len) {
-    // random trys
-    int tries = 0;
-    while (tries++ != DEF_FILE_NAME_TRYS) {
-        for (int i = 0; i < len; i++) {
-            do {
-                file_name[i] = rand();
-            } while(file_name[i] == '.' || file_name[i] == '/' || file_name[i] == '\0');
+bool wipe_name(char *old_path, const bool is_dir) {
+    char *new_path = malloc(strlen(old_path) + 1); 
+    memcpy(new_path, old_path, strlen(old_path) + 1);
+
+    char *base = basename(new_path);
+    char *base_p = new_path + strlen(new_path) - strlen(base);
+    
+    const int dir_fd = open(dirname(old_path), O_RDONLY | O_DIRECTORY | O_SYNC);
+
+    size_t len = strlen(base) + 1;
+    while (len--)
+    {   
+        base[len] = '\0';
+
+        bool len_fail = true;
+        size_t tries = MAX_RENAME_TRIES;
+        // if each and every try of finding a new file name fails, skip this file length
+        while(tries--)
+        {
+            // randomize bytes of the base
+            size_t i = 0;                                           
+            while ((base[i] = rand()) == '\0' || base[i] == '/' 
+                   || ++i < len);
+
+            // check if new name doesnt exists
+            strcpy(base_p, base);
+            if (access(new_path, F_OK)) 
+            {
+                len_fail = false;
+                break;
+            }
         }
-        if (access(full_path, F_OK)) return true;
+
+        if (len_fail)
+            continue;
+
+        if (rename(old_path, new_path)) 
+            return wipe_failure("Can't rename file. Deletion failed!");
+
+        strcpy(old_path, new_path);
     }
 
-    return false;    
+    if(is_dir && rmdir(new_path)
+       || !is_dir && unlink(new_path)) 
+        return wipe_failure("Can't delete file!");
+    
+    if(dir_fd != -1 && close(dir_fd))
+        return wipe_failure("Can't close directory file descriptor!");
 }
 
-bool wipe_file_name(char *old_path, w_info *info) { 
-    // TODO len
-    int len = strlen(old_path) + 1;
-    char *new_path = malloc(len);
-    memcpy(new_path, old_path, len);
-    const char *file_name_p = strrchr(new_path, '/');
-    file_name_p = (file_name_p)? file_name_p : new_path;
- 
-    while(len) {
-        if (new_file_name(new_path, file_name_p, len) 
-            && rename(old_path, new_path) == -1)
-            return failed_here(info, "File change name failure!");
-        
-        
-        --len;
-        old_path[len] = '\0';
-        new_path[len] = '\0';
-    }
+bool wipe_meta(const char *path) {
+
 }
 
+bool wipe_data(const char *path) {
 
-bool wipe_file(const char *path, w_info *info) {
-    info[0] = (w_info) {
-        false,      // wipe_failed
-        NULL,       // errors
-        0,          // n_errors
-        0,          // completed_prec
-        time(NULL), // start_tm
-        time(NULL)  // end_tm
-    };
+}
 
-    fprintf("Wiping file: '%s'", path);
+bool wipe_dir(char *path) {
+    //if (options.delete_after)
+        wipe_name(path, true);
+}
 
-    struct statfs sf;                       //EXT4_SUPER_MAGIC
-    if (!statfs(path, &sf) && sf.f_type != 0xef53) 
-        fprintf(stdout, "the drive this file is stored on doesn't use ext4 file system. File might not be wipped correctly!", PROG_NAME);
+// wipe non dir file
+bool wipe_non_dir(const char *path) {
+    fprintf(stdout, "Wiping file '%s'\n", path);
 
-    // if the file can't be opened, try changing the users permissions opening it again
+    // if opening fd fails and force_open is set, try to change it's access and open it again
     int fd;
-    if ((fd = open(path, O_RDWR)) == -1 
+    int flags = O_RDWR | __O_DIRECT | O_SYNC;
+    if ((fd = open(path, flags)) == -1 
         && errno == EACCES && options.force_open
-        && (chmod(path, S_IRUSR | S_IWUSR) == -1 || (fd = open(path, O_RDWR)) == -1)
-        || fd == -1) return failed_here(info, "Couldn't open the file!");
+        && (chmod(path, S_IRUSR | S_IWUSR) == -1 || (fd = open(path, flags)) == -1)
+        || fd == -1)
+        return wipe_failure("Can't open file!");
 
-    struct stat sb;
-    if (fstat(fd, &sb) == -1) return failed_here(info, "Couldn't get file size!");
+    // give up if the partition the file is on doesn't use ext4
+    struct statfs fs_stats;                           //EXT4_SUPER_MAGIC
+    if (!fstatfs(fd, &fs_stats) && fs_stats.f_type != 0xef53) 
+        return wipe_failure("File is on the wrong file system. File system must be ext4!");
+
+    // get the size of the space allocated for the file's cont
+    struct stat st;
+    if (fstat(fd, &st) == -1) 
+        return wipe_failure("Couldn't get file size!");
 
     // socket or fifo files can't be overwriten
-    if (S_ISSOCK(sb.st_mode) || S_ISFIFO(sb.st_mode)) return failed_here(info, "File is either a Socket or a FIFO (named pipe).");
+    if (S_ISSOCK(st.st_mode) || S_ISFIFO(st.st_mode)) 
+        return wipe_failure("File is eather a FIFO(named pipe) or socket!");
 
+    // try and restrict acces to file from all other processes
+    flock(fd, LOCK_EX | LOCK_NB);
 
-    return !(  wipe_with == USE_ZEROS       && !wipe_zeros(fd, info)
-             ||wipe_with == USE_ONES        && !wipe_ones(fd, info)
-             ||wipe_with == USE_PSEUDO      && !wipe_pseudo(fd, info)
-             ||wipe_with == USE_GOST        && !wipe_gost(fd, info)
-             ||wipe_with == USE_AIRFORCE    && !wipe_airforce(fd, info)
-             ||wipe_with == USE_ARMY        && !wipe_army(fd, info)
-             ||wipe_with == USE_HMG         && !wipe_hmg(fd, info)
-             ||wipe_with == USE_DOD         && !wipe_dod(fd, info)
-             ||wipe_with == USE_PFITZNER    && !wipe_pfitzner(fd, info)
-             ||wipe_with == USE_GUTMANN     && !wipe_gutmann(fd, info)
-             
-             ||options.delete_after         && !wipe_file_name(path, info));
-}
-
-void display_wipe_info (char * const argv[], const w_info *fs_info, const int n_fs_info) {
-
-    for(int i = 0; i < n_fs_info; i++) {
-            fprintf(stdout, "%d)\nFile: '%s'\n", i + 1, argv[i + first_fp]);
-
-            fprintf(stdout, "%s\n", (fs_info[i].wipe_failed)? "Success!\n" : "Failure!\n");
-
-            if (fs_info[i].wipe_failed) {
-                fprintf(stdout, "Failure reason(s): \n");
-                for (int j = 0; j < fs_info[i].n_errors; j++) {
-                    fprintf(stdout, "- %s\n", fs_info[i].errors[j]);
-                }
-            }
-            
-            fprintf(stdout, "Completed: %d\%\n\n",  fs_info[i].completed_prec);
-            
-            fprintf(stdout, "Started at: %d\n", ctime(fs_info[i].start_tm));
-            
-            fprintf(stdout, "Ended at: %d\n", ctime(fs_info[i].end_tm));
-    }
-}
-
-void free_info (w_info **fs_info, const int n) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < (*fs_info)[i].n_errors; j++) free((*fs_info)->errors[j]);
-        free((*fs_info)[i].errors);
-    }
-    free((*fs_info));
-}
-
-int wipe_files (const int argc, char *argv[]) {
-    last_fp = first_fp;
-    while(argv[++last_fp] != NULL);
-    int n_fs_info = last_fp - first_fp;
-
-    bool one_failed = false;
-    w_info *fs_info = malloc((n_fs_info) * sizeof(w_info));
-    for (int i = first_fp; i < last_fp; i++) {
-        one_failed = (wipe_file(argv[i], &fs_info[i - first_fp]))? one_failed : true;
-    }
-
-    display_wipe_info(argv, fs_info, n_fs_info);
     
-    if (one_failed) {
-        fprintf(stdout, "Run program again for failed files? [Y/N]");
+    // first wipe file contents
+    // wipe file inode
 
-        char c;
-        fscanf(stdin, "%c", &c);
-        if (tolower(c) == 'y') {
-            int last_failed_fp = first_fp;
-            for (int i = 0; i < n_fs_info; i++) 
-                if (fs_info[i].wipe_failed) 
-                    argv[last_failed_fp++] = argv[i + first_fp];
+    // if requested by user (by setting delete after flag) wipe file name
+    if (options.delete_after)
+        wipe_name(path, false);
 
-            argv[last_failed_fp] = NULL;
+    if (close(fd))
+        return wipe_failure("Can't close file descriptor!");
 
-            free_info(fs_info, n_fs_info);
-            return FALIURE_RETRY;
-        }
+}
 
-        free_info(fs_info, n_fs_info);
-        return FAILURE_EXIT;
+void wipe_file(const char *path) {
+    struct stat st;
+    stat(path, &st);
+
+    if(S_ISDIR(st.st_mode))
+        traverse_dir(path, wipe_dir, wipe_non_dir);
+    else
+        wipe_non_dir(path);
+}
+
+
+#define PRECENTAGE(COUNT, MAX) ((100.0) - ((((MAX) - (COUNT)) * (100.0)) / (MAX)))
+
+void prit_prog_buf(const size_t count_pass, const size_t max_pass, 
+                   const size_t count_prog, const size_t max_prog) {
+    
+    if (!prog_buf)
+    {
+        const char passes_pref[]    = "Pass: (00/00)\n";
+
+        const char prog_bar_pref[]  = "Progress: [";
+        const char prog_bar_suf[]   = "] 000.000000%%";
+        
+        const int len_prog_bar_pref = strlen(prog_bar_pref);
+        const int len_prog_bar_suf  = strlen(prog_bar_suf);
+        const int len_passes_pref   = strlen(passes_pref);
+
+        const int len_prog_buf = len_passes_pref 
+                                + len_prog_bar_pref 
+                                + 100 
+                                + len_prog_bar_suf 
+                                + 1;
+
+        prog_buf = malloc(len_prog_buf);
+        
+        char *tmp = prog_buf;
+        memcpy(tmp, passes_pref, len_passes_pref);
+
+        tmp += len_passes_pref;
+        memcpy(tmp, prog_bar_pref, len_prog_bar_pref);
+
+        tmp += len_prog_bar_pref + 100;
+        memcpy(tmp, prog_bar_suf, len_prog_bar_suf);
+
+        prog_buf[len_prog_buf - 1] = '\0';
     }
 
-    free_info(fs_info, n_fs_info);
-    return SUCCESS_EXIT;
+    if (max_pass) 
+    {
+        char bf[] = "00";
 
+        sprintf(bf, "%s%ld", (count_pass > 9)? "":"0", count_pass);
+        memcpy(strchr(prog_buf, '(') + 1, bf, 2);
+
+        sprintf(bf, "%s%ld", (max_pass > 9)? "":"0", max_pass);
+        memcpy(strchr(prog_buf, '/') + 1, bf, 2);
+    }
+    
+    float prec = PRECENTAGE(count_prog, max_prog);
+
+    char *prog_bar_start = strchr(prog_buf, '[') + 1;
+    for(size_t i = 0; i < 100; i++) 
+    {
+        prog_bar_start[i] = (i < (int)prec)? '#':'.';
+    }
+
+    char *prog_bar_end = strchr(prog_buf, ']');
+    char bf[] = "000.000000%%"; 
+    sprintf(bf, "%s%s%.6f%%",  (prec < 100)? " " : ""
+                               , (prec < 10)? " " : ""
+                               , prec);
+    memcpy(prog_bar_end + 2, bf, strlen(bf) + 1);
+
+
+    fprintf(stdout, "%s\n", (max_pass)? prog_buf : strchr(prog_buf, '\n') + 1);
 }
 
 void set_options (const int argc, char * const argv[]) {
-    wipe_with = USE_NONE;
     options = (Options) {
-        false,  // delete_after
-        false,  // displ_info
-        false,  // force_open
-        0,      // first
+        W_NONE,     // method
+        false,      // delete_after
+        false,      // displ_info
+        false,      // force_open
+        0,          // first
     };
 
     int opt;
     while((opt = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
         switch (opt) {
             // wipe methods
-            case 'z':   wipe_with = USE_ZEROS;          break;
-            case 'o':   wipe_with = USE_ONES;           break;
-            case 'p':   wipe_with = USE_PSEUDO;         break;
-            case 'r':   wipe_with = USE_GOST;           break;
-            case 'c':   wipe_with = USE_AIRFORCE;       break;
-            case 'a':   wipe_with = USE_ARMY;           break;
-            case 'b':   wipe_with = USE_HMG;            break;
-            case 'd':   wipe_with = USE_DOD;            break;
-            case 'n':   wipe_with = USE_PFITZNER;       break;
-            case 'g':   wipe_with = USE_GUTMANN;        break;
+            case 'z':   options.method = W_ZEROS;          break;
+            case 'o':   options.method = W_ONES;           break;
+            case 'p':   options.method = W_PSEUDO;         break;
+            case 'r':   options.method = W_GOST;           break;
+            case 'c':   options.method = W_AIRFORCE;       break;
+            case 'a':   options.method = W_ARMY;           break;
+            case 'b':   options.method = W_HMG;            break;
+            case 'd':   options.method = W_DOD;            break;
+            case 'n':   options.method = W_PFITZNER;       break;
+            case 'g':   options.method = W_GUTMANN;        break;
             // other flags
             case 'h':   usage();                        break;
             case 'e':   options.delete_after = true;    break;
@@ -406,25 +333,36 @@ void set_options (const int argc, char * const argv[]) {
         }
     }
 
-    if (wipe_with == USE_NONE) wipe_with = USE_ZEROS;
+    if (options.method == W_NONE) options.method = W_ZEROS;
 
-    FAIL_IF((first_fp = optind) == argc, "Missing file opperand!");
+    FAIL_IF((i_first_fp = optind) == argc, "Mising file operand!"); 
 }
 
-int main (int argc, char **argv) {
+
+int main(int argc, char *argv[]) {
+    wipe_file("a/b/c");
+    wipe_file("a/b");
+    exit(1);
     time_t start_tm = time(NULL);
-
-    set_options(argc, argv);
-
-    int fin_status;
-    while((fin_status = wipe_files(argc, argv)) == FALIURE_RETRY);
     
-    fprintf(stdout, "%s", (fin_status == SUCCESS_EXIT)? "%s: finished with no errors!" : "%s: finished with errors!", PROG_NAME);
+    srand(time(NULL));
+    
+    set_options(argc, argv);
+    
+    
+    while(i_first_fp < argc)
+        wipe_file(argv[i_first_fp++]);
 
-    time_t diff_tm = start_tm - time(NULL);
-    struct tm *lt = localtime(&diff_tm);
-    fprintf(stdout, "Total time elapsed: %d days|%d hrs|%d mins|%s secs\n", lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
 
-    free(prog_bar_buf);
+    free(prog_buf);
+
+    fprintf(stdout, "%s: finished!\n", PROG_NAME);
+    
+    time_t d, h, m , s = time(NULL) - start_tm;
+    s -= (d = s / 86400) * 86400;
+    s -= (h = s / 3600) * 3600;
+    s -= (m = s / 60) * 60;   
+    fprintf(stdout, "Time elapsed: %ldd : %ldh : %ldm : %lds\n", d, h, m, s);
+
     return 0;
 }
