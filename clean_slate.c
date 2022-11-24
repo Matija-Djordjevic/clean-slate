@@ -50,7 +50,7 @@ typedef enum w_method {
     W_ONES,       // -o
     W_PSEUDO,     // -p
     W_GOST,       // -r
-    W_AFORCE,   // -c
+    W_AFORCE,     // -c
     W_ARMY,       // -a
     W_HMG,        // -b
     W_DOD,        // -d

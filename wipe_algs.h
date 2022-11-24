@@ -20,6 +20,10 @@ bool init_wipe(const int fd, bool (*wipe_funct) (const int)) {
     // semafori
 }
 
+bool wipe_none (const int fd) {
+    *max_pass = 1;
+    return true;
+}
 bool wipe_zeros (const int fd) {
     *max_pass = 1;
     return true;
