@@ -40,6 +40,9 @@
 
 #define DEF_RW_BUF_SIZE (1 << 16)
 
+// per second
+#define PROG_BUF_UPDATES (30)
+
 typedef enum w_method {
     W_NONE,
     W_ZEROS,      // -z    
@@ -227,7 +230,7 @@ void wipe_file(const char *path) {
     stat(path, &st);
 
     if(S_ISDIR(st.st_mode))
-        traverse_dir(path, wipe_dir, wipe_non_dir);
+        traverse_dir_wipe(path, wipe_dir, wipe_non_dir);
     else
         wipe_non_dir(path);
 }
@@ -340,9 +343,6 @@ void set_options (const int argc, char * const argv[]) {
 
 
 int main(int argc, char *argv[]) {
-    wipe_file("a/b/c");
-    wipe_file("a/b");
-    exit(1);
     time_t start_tm = time(NULL);
     
     srand(time(NULL));

@@ -9,7 +9,7 @@
 #include <errno.h>
 #include <libgen.h>
 
-#define NEW_STACK_CAP(OLD_CAP) ((OLD_CAP) * 2)
+#define NEW_STACK_CAP(OLD_CAP) (((OLD_CAP) == 0)? 1 : (OLD_CAP) * 2)
     
 typedef struct d_info 
 {
@@ -80,9 +80,8 @@ static d_info *d_info_cpy(d_info *dst, const d_info *src) {
 static d_stack *d_stk_new() {
     d_stack *ret = malloc(sizeof(d_stack));
 
-    ret->capacity = 1;
+    ret->capacity = 0;
     ret->len = 0;
-    ret->mem_block = calloc(0, sizeof(d_info));
 
     return ret;
 } 
@@ -166,9 +165,9 @@ static void d_stk_print(const d_stack *st) {
 
 #define NOT_IN_PAR_DIR(DEPTH, CUR_DIR_DEPTH) ((DEPTH) == (CUR_DIR_DEPTH))
 char WORKINGDIR[PATH_MAX];
-int traverse_dir(const char *path, 
-             bool (* handle_dir) (char *), 
-             bool (* handle_file) (char *)){
+int traverse_dir_wipe(const char *path,
+                      bool (* handle_dir) (char *), 
+                      bool (* handle_file) (char *)){
     
     char init_wd[PATH_MAX];
     getcwd(init_wd, sizeof(init_wd));
@@ -178,7 +177,7 @@ int traverse_dir(const char *path,
     chdir(path);
     chdir("..");
 
-    d_info *curr = d_info_new(basename(path), //path relative to the parent path
+    d_info *curr = d_info_new(basename(path), 
                               false, 
                               1);
     d_stack *st = d_stk_new();
@@ -197,21 +196,21 @@ int traverse_dir(const char *path,
             chdir("..");
             depth--;
         }
-        getcwd(WORKINGDIR, PATH_MAX);
-        a = WORKINGDIR;
+
         if (curr->empty)
         {
             handle_dir(curr->name);
             continue;
         }
-        DIR *dir_fd = opendir(curr->name);
-        if(!dir_fd) {
-            printf("%s\n", strerror(errno));
-            continue;
-        }
-        
+
         curr->empty = true;
         d_stk_push(st, curr);
+        
+        
+        DIR *dir_fd = opendir(curr->name);
+        if(!dir_fd) 
+            continue;
+
         chdir(curr->name);
         depth++;
 
@@ -221,11 +220,9 @@ int traverse_dir(const char *path,
             if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
             {
                 struct stat f_st;
-                int b = 2;
                 if (lstat(entry->d_name, &f_st)) 
                     continue;
 
-                int a = S_ISDIR(f_st.st_mode);
                 if (S_ISDIR(f_st.st_mode))
                 {
                     d_info_free(&curr);
