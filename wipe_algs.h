@@ -1,78 +1,78 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <pthread.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
 
 #define PRECENTAGE(COUNT, MAX) ((100.0) - ((((MAX) - (COUNT)) * (100.0)) / (MAX)))
 
-static size_t *bytes_wiped;
-static bool *has_passes;
-static size_t *curr_pass;
-static size_t *max_pass;
+size_t count_pass = 0;
+size_t max_pass = 0;
+size_t count_prog = 0;
+size_t max_prog = 0;
 
+bool wiping_finsihsed;
 
-bool wipe_none (const int fd) {
-    *max_pass = 1;
-    return true;
-}
+char *prog_buf = NULL;
 
 bool wipe_zeros (const int fd) {
-    *max_pass = 1;
+    max_pass = 1;
     return true;
 }
 
 bool wipe_ones (const int fd) {
-    *max_pass = 1;
+    max_pass = 1;
     return true;
 }
 
 bool wipe_pseudo (const int fd) {
-    *max_pass = 1;
+    max_pass = 1;
     return true;
 }
 
 bool wipe_gost (const int fd) {
-    *max_pass = 2;
+    max_pass = 2;
     return true;
 }
 
 bool wipe_airforce (const int fd) {
-    *max_pass = 3;
+    max_pass = 3;
     return true;
 }
 
 bool wipe_army (const int fd) {
-    *max_pass = 3;
+    max_pass = 3;
     return true;
 }
 
 bool wipe_hmg (const int fd) {
-    *max_pass = 3;
+    max_pass = 3;
     return true;
 }
 
 bool wipe_dod (const int fd) {
-    *max_pass = 7;
+    max_pass = 7;
     return true;
 }
 
 bool wipe_pfitzner (const int fd) {
-    *max_pass = 33;
+    max_pass = 33;
     return true;
 }
 
 bool wipe_gutmann (const int fd) {
-    *max_pass = 35;
+    max_pass = 35;
     return true;
 }
 
 bool wipe_source (const int fd) {
-    *max_pass = 1;
+    max_pass = 1;
     return true;
 }
 
-// proto
-void prit_prog_buf(const size_t count_pass, const size_t max_pass, 
-                   const size_t count_prog, const size_t max_prog) {
+void prit_prog_buf() {
     
     if (!prog_buf)
     {
@@ -80,7 +80,7 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
 
         const char prog_bar_pref[]  = "Progress: [";
         const char prog_bar_suf[]   = "] 000.000000%%";
-        
+                                       
         const int len_prog_bar_pref = strlen(prog_bar_pref);
         const int len_prog_bar_suf  = strlen(prog_bar_suf);
         const int len_passes_pref   = strlen(passes_pref);
@@ -105,44 +105,70 @@ void prit_prog_buf(const size_t count_pass, const size_t max_pass,
         prog_buf[len_prog_buf - 1] = '\0';
     }
 
-    if (max_pass) 
-    {
-        char bf[] = "00";
-
-        sprintf(bf, "%s%ld", (count_pass > 9)? "":"0", count_pass);
-        memcpy(strchr(prog_buf, '(') + 1, bf, 2);
-
-        sprintf(bf, "%s%ld", (max_pass > 9)? "":"0", max_pass);
-        memcpy(strchr(prog_buf, '/') + 1, bf, 2);
-    }
+    // fill buffer with passes (count/max)
+    char bf_pass[] = "00";
     
-    float prec = PRECENTAGE(count_prog, max_prog);
+    sprintf(bf_pass, "%s%ld", (count_pass > 9)? "":"0", count_pass);
+    memcpy(strchr(prog_buf, '(') + 1, bf_pass, 2);
+    
+    sprintf(bf_pass, "%s%ld", (max_pass > 9)? "":"0", max_pass);
+    memcpy(strchr(prog_buf, '/') + 1, bf_pass, 2);
+    
 
+    // fill the precentage bar
+    float prec = PRECENTAGE(count_prog, max_prog);
     char *prog_bar_start = strchr(prog_buf, '[') + 1;
+    
     for(size_t i = 0; i < 100; i++) 
     {
         prog_bar_start[i] = (i < (int)prec)? '#':'.';
     }
 
-    char *prog_bar_end = strchr(prog_buf, ']');
-    char bf[] = "000.000000%%"; 
-    sprintf(bf, "%s%s%.6f%%",  (prec < 100)? " " : ""
+
+    // fill the decimal representation
+    char *dec_rep_beg = strchr(prog_buf, ']') + 2;
+    char bf_decimal_rep[] = "000.000000%%";
+    
+    sprintf(bf_decimal_rep, "%s%s%.6f%%",  (prec < 100)? " " : ""
                                , (prec < 10)? " " : ""
                                , prec);
-    memcpy(prog_bar_end + 2, bf, strlen(bf) + 1);
+    memcpy(dec_rep_beg, bf_decimal_rep, strlen(bf_decimal_rep) + 1);
 
 
-    fprintf(stdout, "%s\n", (max_pass)? prog_buf : strchr(prog_buf, '\n') + 1);
+    write(STDOUT_FILENO, prog_buf, strlen(prog_buf));
+    write(STDOUT_FILENO, "\n", 1);
 }
 
+// how often will the buffer be displayed
+#define PROG_BUF_PER_SEC (30) 
+
+void *init_buf_thread() {
+
+    long ns_in_s = 1000000000;
+    struct timespec req = (struct timespec) {
+        0, 
+        ns_in_s / PROG_BUF_PER_SEC
+    };
+
+    while (!wiping_finsihsed) {
+        nanosleep(&req, NULL);
+        
+        // clear the terminal
+        prit_prog_buf();
+    }
+
+    return;
+}
 
 bool init_wipe(const int fd, bool (*wipe_funct) (const int)) {
-    *bytes_wiped = 0;
-    // fork the program
-    // if parrent
-        bool success = wipe_funct(fd);
-    // if child
-        // start a buffer that reads 
-    // close child
-    // semafori
+    wiping_finsihsed = false;
+    pthread_t prog_thrd;
+    bool success = wipe_funct(fd);
+
+    pthread_create(&prog_thrd, NULL, init_buf_thread, NULL);
+
+    wiping_finsihsed = true;
+    // send sig to exit nanosleep, is it worth it?
+    pthread_join(prog_thrd, NULL);
+    return success;
 }
