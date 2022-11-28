@@ -8,10 +8,13 @@
 
 #define PRECENTAGE(COUNT, MAX) ((100.0) - ((((MAX) - (COUNT)) * (100.0)) / (MAX)))
 
+#define DEF_BUF_SIZE    (64000) //bytes
+#define DEF_TRIES       (256)
+
 size_t count_pass = 0;
 size_t max_pass = 0;
-size_t count_prog = 0;
-size_t max_prog = 0;
+size_t count_bytes = 0;
+size_t max_bytes = 0;
 
 bool wiping_finsihsed;
 
@@ -72,6 +75,32 @@ bool wipe_source (const int fd) {
     return true;
 }
 
+void write_to_file(const int fd, const char *w_buf, char *r_buf) {
+    
+    struct stat st;
+    if(fstat(fd, &st)) 
+        return false;
+
+    size_t bytes = st.st_size;
+    ssize_t b_read, b_written;
+    
+    size_t b_size = DEF_BUF_SIZE;
+    
+    max_bytes = bytes;
+    size_t tries = DEF_TRIES;
+    do {   
+        if((b_written = write(fd, w_buf, b_size)) < 0  ||
+           (b_read = write(fd, r_buf, b_written)) < 0 ||
+           !memcmp(b_read, b_written, b_written))
+            {tries--; continue;}
+        
+    bytes -= b_read;
+    // mozda izlazak iz petlje ako je b_read == 0  ?
+    }while(bytes);
+
+    return;
+}
+
 void prit_prog_buf() {
     
     if (!prog_buf)
@@ -116,7 +145,7 @@ void prit_prog_buf() {
     
 
     // fill the precentage bar
-    float prec = PRECENTAGE(count_prog, max_prog);
+    float prec = PRECENTAGE(count_bytes, max_bytes);
     char *prog_bar_start = strchr(prog_buf, '[') + 1;
     
     for(size_t i = 0; i < 100; i++) 
@@ -146,13 +175,12 @@ void *init_buf_thread() {
 
     long ns_in_s = 1000000000;
     struct timespec req = (struct timespec) {
-        0, 
+        0,
         ns_in_s / PROG_BUF_PER_SEC
     };
 
     while (!wiping_finsihsed) {
         nanosleep(&req, NULL);
-        
         // clear the terminal
         prit_prog_buf();
     }
