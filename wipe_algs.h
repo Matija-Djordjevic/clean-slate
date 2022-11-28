@@ -20,13 +20,20 @@ bool wiping_finsihsed;
 
 char *prog_buf = NULL;
 
+size_t buf_size = DEF_BUF_SIZE;
+
+void *w_buf = NULL;
+void *r_buf = NULL;
+
 bool wipe_zeros (const int fd) {
     max_pass = 1;
+    memset(w_buf, 0, buf_size);
     return true;
 }
 
 bool wipe_ones (const int fd) {
     max_pass = 1;
+    memset(w_buf, -1, buf_size);
     return true;
 }
 
@@ -75,7 +82,7 @@ bool wipe_source (const int fd) {
     return true;
 }
 
-void write_to_file(const int fd, const char *w_buf, char *r_buf) {
+void write_to_file(const int fd, const bool rand_write) {
     
     struct stat st;
     if(fstat(fd, &st)) 
@@ -84,14 +91,30 @@ void write_to_file(const int fd, const char *w_buf, char *r_buf) {
     size_t bytes = st.st_size;
     ssize_t b_read, b_written;
     
-    size_t b_size = DEF_BUF_SIZE;
     
     max_bytes = bytes;
     size_t tries = DEF_TRIES;
-    do {   
-        if((b_written = write(fd, w_buf, b_size)) < 0  ||
-           (b_read = write(fd, r_buf, b_written)) < 0 ||
-           !memcmp(b_read, b_written, b_written))
+    do {
+        
+        if(rand_write) {
+            size_t n_ints = buf_size / sizeof(int);
+            size_t i = 0;
+
+            // randomize chunks the size of int, since rand() returns int
+            while(i < n_ints)
+                { ((int *)w_buf)[i++] = rand(); }
+
+            // and now for the remaining bytes 
+            if(i) 
+                (--i) *= sizeof(int);
+
+            while (i < buf_size)
+                { ((char *)w_buf)[i++] = rand(); }
+        }   
+        
+        if((b_written = write(fd, w_buf, buf_size)) < 0
+           || (b_read = write(fd, r_buf, b_written)) < 0
+           || !memcmp(b_read, b_written, b_written))
             {tries--; continue;}
         
     bytes -= b_read;
@@ -189,6 +212,9 @@ void *init_buf_thread() {
 }
 
 bool init_wipe(const int fd, bool (*wipe_funct) (const int)) {
+    w_buf = calloc(buf_size, sizeof(char));
+    r_buf = calloc(buf_size, sizeof(char));
+
     wiping_finsihsed = false;
     pthread_t prog_thrd;
     bool success = wipe_funct(fd);

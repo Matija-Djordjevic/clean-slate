@@ -29,8 +29,8 @@ typedef struct d_stack
 
 static void d_info_print(const d_info *info){
     printf("'%s' %s %ld\n", info->name, 
-                        (info->empty)? "TRUE":"FALSE", 
-                        info->depth);
+                            (info->empty)? "TRUE":"FALSE", 
+                            info->depth);
 }
 
 d_info *d_info_new(const char *name, 
