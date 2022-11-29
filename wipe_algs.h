@@ -8,8 +8,8 @@
 
 #define PRECENTAGE(COUNT, MAX) ((100.0) - ((((MAX) - (COUNT)) * (100.0)) / (MAX)))
 
-#define DEF_BUF_SIZE    (64000) //bytes
-#define DEF_TRIES       (256)
+#define DEF_BUF_SIZE (64000) //bytes
+#define DEF_WRITE_TRIES (256)
 
 size_t count_pass = 0;
 size_t max_pass = 0;
@@ -28,17 +28,20 @@ void *r_buf = NULL;
 bool wipe_zeros (const int fd) {
     max_pass = 1;
     memset(w_buf, 0, buf_size);
+    write_to_file(fd, false);
     return true;
 }
 
 bool wipe_ones (const int fd) {
     max_pass = 1;
     memset(w_buf, -1, buf_size);
+    write_to_file(fd, false);
     return true;
 }
 
 bool wipe_pseudo (const int fd) {
     max_pass = 1;
+    write_to_file(fd, true);
     return true;
 }
 
@@ -82,6 +85,8 @@ bool wipe_source (const int fd) {
     return true;
 }
 
+#define MIN(a, b) (((a)<(b))? (a):(b))
+
 void write_to_file(const int fd, const bool rand_write) {
     
     struct stat st;
@@ -89,11 +94,13 @@ void write_to_file(const int fd, const bool rand_write) {
         return false;
 
     size_t bytes = st.st_size;
-    ssize_t b_read, b_written;
+    ssize_t bytes_r, bytes_w; 
     
     
     max_bytes = bytes;
-    size_t tries = DEF_TRIES;
+
+    off_t offset = 0;
+    size_t tries = DEF_WRITE_TRIES;
     do {
         
         if(rand_write) {
@@ -105,26 +112,27 @@ void write_to_file(const int fd, const bool rand_write) {
                 { ((int *)w_buf)[i++] = rand(); }
 
             // and now for the remaining bytes 
-            if(i) 
+            if(i)
                 (--i) *= sizeof(int);
 
             while (i < buf_size)
                 { ((char *)w_buf)[i++] = rand(); }
         }   
         
-        if((b_written = write(fd, w_buf, buf_size)) < 0
-           || (b_read = write(fd, r_buf, b_written)) < 0
-           || !memcmp(b_read, b_written, b_written))
+        if((bytes_w = pwrite(fd, w_buf, MIN(buf_size, bytes), offset)) < 0
+           || (bytes_r = pread(fd, r_buf, bytes_w, offset)) < 0
+           || !memcmp(w_buf, r_buf, bytes_r))
             {tries--; continue;}
         
-    bytes -= b_read;
-    // mozda izlazak iz petlje ako je b_read == 0  ?
+    bytes -= bytes_r;
+    offset += bytes_r;
+    // mozda izlazak iz petlje ako je bytes_r == 0  ?
     }while(bytes);
 
     return;
 }
 
-void prit_prog_buf() {
+void display_prog_buf() {
     
     if (!prog_buf)
     {
@@ -191,21 +199,20 @@ void prit_prog_buf() {
     write(STDOUT_FILENO, "\n", 1);
 }
 
-// how often will the buffer be displayed
-#define PROG_BUF_PER_SEC (30) 
+#define PROG_BUF_REFRESH (30) // per sec
 
 void *init_buf_thread() {
 
     long ns_in_s = 1000000000;
     struct timespec req = (struct timespec) {
         0,
-        ns_in_s / PROG_BUF_PER_SEC
+        ns_in_s / PROG_BUF_REFRESH
     };
 
     while (!wiping_finsihsed) {
         nanosleep(&req, NULL);
         // clear the terminal
-        prit_prog_buf();
+        display_prog_buf();
     }
 
     return;
@@ -224,5 +231,9 @@ bool init_wipe(const int fd, bool (*wipe_funct) (const int)) {
     wiping_finsihsed = true;
     // send sig to exit nanosleep, is it worth it?
     pthread_join(prog_thrd, NULL);
+
+    free(w_buf); free(r_buf);
+
+
     return success;
 }
